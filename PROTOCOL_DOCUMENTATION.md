@@ -1,8 +1,32 @@
-# Unicity State Transition Protocol - Technical Documentation
+# Unicity Token SDK - Technical Documentation
 
 ## Abstract
 
-The Unicity State Transition Protocol implements a cryptographic token system with off-chain privacy and on-chain uniqueness guarantees. Tokens exist as self-contained cryptographic objects that can be transferred peer-to-peer while preventing double-spending through a uniqueness oracle service. The protocol achieves transaction unlinkability through masked predicates and provides verifiable state transitions without revealing transaction details to third parties.
+The Unicity State Transition Protocol (Token SDK) implements a cryptographic token system with off-chain privacy and on-chain uniqueness guarantees. Tokens exist as self-contained cryptographic objects that can be transferred peer-to-peer while preventing double-spending through a uniqueness oracle service. The protocol achieves transaction unlinkability through masked predicates and provides verifiable state transitions without revealing transaction details to third parties.
+
+## Changes in Terminology
+
+There are following changes in terminology compared to the source code:
+
+| Source Code    | Here            |
+| -------------  | -------------   |
+| Unicity Prover | Unicity Service |
+| `RequestId`    | `StateId`       |
+| Predicate      | Ownership Condition |
+| nonce          | blinding mask (where appropriate)|
+
+
+Proposed changes:
+
+| Source Code    | Here            |
+| -------------  | -------------   |
+| Transition     | Transfer (pending state) |
+| Transaction    | Transfer (final state)   |
+| Authenticator  | Spend Authorization |
+| Masked Predicate | Blinded Ownership Condition |
+| Pointer        | one-time address? |
+| Authenticator  | Spend Authorization |
+
 
 ## 1. Core Cryptographic Primitives
 
@@ -28,7 +52,7 @@ A **Token** is a self-contained cryptographic object containing:
 ```
 Token := {
   state: TokenState,           // Current ownership state
-  genesis: MintTransaction,    // Initial creation proof  
+  genesis: MintTransaction,    // Initial creation proof
   transactions: Transaction[], // Complete transition history
   nametagTokens: NameTag[],   // Optional addressing tokens
   version: string             // Protocol version
@@ -39,85 +63,85 @@ Token := {
 
 ```
 TokenState := {
-  unlockPredicate: Predicate,  // Ownership verification mechanism
-  data: bytes?,                // Optional state-specific data  
+  unlock: OwnershipCondition,  // Ownership verification mechanism
+  data: bytes?,                // Optional state-specific data
   hash: Hash(predicate.hash || data)  // State commitment
 }
 ```
 
-### 2.2 Predicate System
+### 2.2 Ownership Condition System
 
-**Predicates** define token ownership and spending conditions. Two primary types exist:
+**Ownership Conditions** define token ownership and spending conditions. Two primary types exist:
 
-#### Unmasked Predicate (Direct Ownership)
+#### Unmasked Ownership Condition (Public Ownership)
 ```
-UnmaskedPredicate := {
+OwnershipCondition := {
   type: "UNMASKED",
-  publicKey: PublicKey,        // Owner's public key
-  algorithm: string,           // Signature algorithm identifier
+  publicKey: PublicKey,         // Owner's public key
+  algorithm: string,            // Signature algorithm identifier
   hashAlgorithm: HashAlgorithm, // Hash algorithm identifier
-  nonce: bytes,                // Deterministic nonce from salt signature
+  mask: bytes,                  // Deterministic blinding mask from salt signature
   reference: Hash(type || tokenType || algorithm || hashAlg || publicKey),
-  hash: Hash(reference || tokenId || nonce)
+  hash: Hash(reference || tokenId || mask)
 }
 ```
 
-#### Masked Predicate (Privacy-Preserving Ownership)  
+#### Blinded Ownership Condition (Privacy-Preserving Ownership)
 ```
-MaskedPredicate := {
-  type: "MASKED", 
-  publicKey: PublicKey,        // Owner's public key
-  algorithm: string,           // Signature algorithm identifier
+MaskedOwnershipCondition := {
+  type: "MASKED",
+  publicKey: PublicKey,         // Owner's public key
+  algorithm: string,            // Signature algorithm identifier
   hashAlgorithm: HashAlgorithm, // Hash algorithm identifier
-  nonce: bytes,                // Random blinding factor
-  reference: Hash(type || tokenType || algorithm || hashAlg || publicKey || nonce),
+  mask: bytes,                  // Random blinding mask
+  reference: Hash(type || tokenType || algorithm || hashAlg || publicKey || mask),
   hash: Hash(reference || tokenId)
 }
 ```
 
-**Key Difference**: Masked predicates include a random nonce in the reference calculation, providing unlinkability between different token states owned by the same entity.
+Blinded ownership conditions include a random blinding mask in the reference calculation, providing unlinkability between different token states owned by the same entity.
 
-## 3. Unicity Prover Service Interface
+## 3. Unicity Service Interface
 
-### 3.1 Abstract Prover Interface
+### 3.1 Abstract Interface
 
-The protocol requires interaction with a **Unicity Prover** (implemented as `IAggregatorClient`) providing the following abstract interface:
+The protocol requires interaction with a **Unicity Service** (implemented as `IAggregatorClient`) providing the following abstract interface:
 
 ```typescript
-interface UnicityProver {
+interface UnicityService {
   // Submit a state transition commitment
   submitCommitment(
-    requestId: RequestId,        // Unique state identifier
+    stateId: StateId,        // Unique state identifier
     transactionHash: Hash,       // Transaction commitment
-    authenticator: Authenticator  // Ownership proof
+    authenticator: Authenticator  // Owner's authorization
   ): Promise<SubmitCommitmentResponse>
 
   // Retrieve inclusion proof for a committed transition
   getInclusionProof(
-    requestId: RequestId         // State identifier to query
+    stateId: StateId         // State identifier to query
   ): Promise<InclusionProof>
 }
 ```
 
-### 3.2 Request Identifier Generation
+### 3.2 State Identifier Generation
 
-**RequestId** serves as a unique state identifier:
+**StateId** serves as a unique state identifier:
 
 ```
-RequestId := Hash(publicKey || stateHash)
+StateId := Hash(publicKey || stateHash)
 ```
 
 Where:
 - `publicKey` is the current owner's public key
 - `stateHash` is the cryptographic hash of the token state
 
-This construction ensures each token state has a globally unique identifier while maintaining privacy (the prover sees only the hash, not the state details).
+This construction ensures each token state has a globally unique identifier while maintaining privacy (the service sees only the hash, not the state details).
 
 ## 4. Authenticator Structure
 
 ### 4.1 Cryptographic Role
 
-The **Authenticator** (kept opaque in most protocol descriptions) serves as a **zero-knowledge proof of ownership** for state transitions. It contains:
+The **Authenticator** (kept opaque mostly) serves as the token owner's authorization to execute the request. It contains:
 
 ```
 Authenticator := {
@@ -131,54 +155,54 @@ Authenticator := {
 
 The Authenticator provides cryptographic evidence that:
 1. The signer possesses the private key corresponding to `publicKey`
-2. The signer authorized the specific transaction (via `signature`)  
+2. The signer authorized the specific transaction (via `signature`)
 3. The source state hash matches the claimed state (`stateHash`)
 4. The state transition is legitimate without revealing state details
 
-### 4.3 Unicity Prover Validation Algorithm
+### 4.3 Unicity Service's Request Validation Algorithm
 
-The Unicity Prover validates an authenticator using the following algorithm:
+The Unicity Service validates an authenticator using the following algorithm:
 
 ```
-Algorithm: ValidateAuthenticator(requestId, h_tx, authenticator)
+Algorithm: ValidateAuthenticator(stateId, h_tx, authenticator)
 Input:
-  - requestId ∈ {0,1}^256        // Claimed unique state identifier  
-  - h_tx ∈ {0,1}^256            // Transaction commitment hash
+  - stateId ∈ {0,1}^λ        // Claimed unique state identifier
+  - h_tx ∈ {0,1}^λ            // Transaction commitment hash
   - authenticator = (pk, σ, s)   // Ownership proof to validate
 
 Validation Steps:
 1. Parse authenticator components:
    - pk ∈ G                      // Public key
    - σ ∈ {0,1}^*                // Digital signature
-   - s ∈ {0,1}^256              // State hash
+   - s ∈ {0,1}^λ              // State hash
 
 2. Verify request ID construction:
    - r' ← H(pk || s)
-   - if r' ≠ requestId then return INVALID
+   - if r' ≠ stateId then return INVALID
 
 3. Verify digital signature:
    - if Verify(pk, h_tx, σ) ≠ 1 then return INVALID
 
 4. Check uniqueness constraint:
-   - if requestId ∈ SpentStateSet then return DOUBLE_SPEND
-   - SpentStateSet ← SpentStateSet ∪ {requestId}
+   - if stateId ∈ SpentStateSet then return DOUBLE_SPEND
+   - SpentStateSet ← SpentStateSet ∪ {stateId}
 
 5. Return SUCCESS
 
-Information Learned by Unicity Prover:
-  - requestId ∈ {0,1}^256: Unique identifier (but not the actual token state)
-  - pk ∈ G: Owner's public key (but not their identity)  
-  - s ∈ {0,1}^256: Hash of source state (but not the state contents)
-  - h_tx ∈ {0,1}^256: Hash of transaction (but not transaction details)
-  
-Information Hidden from Unicity Prover:
+Information Learned by Unicity Service:
+  - stateId ∈ {0,1}^λ: Unique identifier (but not the actual token state)
+  - pk ∈ G: Owner's public key (but not their identity)
+  - s ∈ {0,1}^λ: Hash of source state (but not the state contents)
+  - h_tx ∈ {0,1}^λ: Hash of transaction (but not transaction details)
+
+Information Hidden from Unicity Service:
   - Token ID, type, or any token-specific data
   - Transaction recipient or transfer amount
   - Actual token state contents (only sees hash)
   - Relationship between different transactions by same owner
 ```
 
-**Privacy Properties**: The Unicity Prover learns only the minimum information necessary to prevent double-spending while remaining oblivious to token details, transaction specifics, and ownership relationships across different tokens.
+**Privacy Properties**: The Unicity Service learns only the minimum information necessary to prevent double-spending while remaining oblivious to token details, transaction specifics, and ownership relationships across different tokens.
 
 ## 5. Transaction Protocol Messages
 
@@ -187,19 +211,19 @@ Information Hidden from Unicity Prover:
 #### Commitment Message
 ```
 Commitment := {
-  requestId: RequestId,           // Unique state identifier  
+  stateId: StateId,                 // Unique state identifier
   transactionData: TransactionData, // State transition details
-  authenticator: Authenticator     // Ownership proof
+  authenticator: Authenticator      // Ownership proof
 }
 ```
 
-#### Transaction Data  
+#### Transaction Data
 ```
 TransactionData := {
-  hash: Hash,                     // Self-identifying hash
-  sourceState: TokenState,        // Current state being spent
-  recipient: Address,             // Destination address
-  salt: bytes,                    // Random value for privacy
+  hash: Hash,                    // Self-identifying hash
+  sourceState: TokenState,       // Current state being spent
+  recipient: Address,            // Destination address
+  salt: bytes,                   // Random value for privacy
   dataHash: Hash?,               // Optional new state data commitment
   message: bytes?,               // Optional encrypted message
   nametagTokens: NameTag[]       // Optional addressing tokens
@@ -209,16 +233,16 @@ TransactionData := {
 #### Mint Transaction Data
 ```
 MintTransactionData := {
-  hash: Hash,                     // Self-identifying hash
+  hash: Hash,                    // Self-identifying hash
   tokenId: TokenId,              // Unique token identifier
-  tokenType: TokenType,          // Token class identifier  
+  tokenType: TokenType,          // Token class identifier
   tokenData: bytes,              // Immutable token data
   coinData: CoinData?,           // Optional fungible amounts
-  sourceState: RequestId,        // Pseudo-source for minting
+  sourceState: stateId,          // Pseudo-source for minting
   recipient: Address,            // Initial owner address
-  salt: bytes,                   // Randomness for predicate derivation
-  dataHash: Hash?,              // Optional metadata commitment
-  reason: Serializable?         // Optional mint justification
+  salt: bytes,                   // Randomness for ownership condition derivation
+  dataHash: Hash?,               // Optional metadata commitment
+  reason: Serializable?          // Optional mint justification
 }
 ```
 
@@ -241,14 +265,14 @@ Where `checksum = SHA-256(predicate.reference.toCBOR())[0:4]`
 
 ### 6.2 Privacy-Preserving Mechanisms
 
-#### Masked Predicate System
-- **Unlinkability**: Random nonces in masked predicates prevent correlation of token states owned by the same entity
+#### Masked Ownership Condition System
+- **Unlinkability**: Random blinding masks in masked ownership conditions prevent correlation of token states owned by the same entity
 - **Forward Privacy**: Previous owners cannot track subsequent token movements
 - **Selective Disclosure**: Only the current owner can prove ownership without revealing historical ownership
 
 #### Salt-Based Privacy
 - **Transaction Unlinkability**: Random salts in transactions prevent correlation
-- **Address Unlinkability**: Different nonces create different addresses for the same public key
+- **Address Unlinkability**: Different blinding masks create different addresses for the same public key
 
 ## 7. Anonymity Analysis
 
@@ -256,7 +280,7 @@ Where `checksum = SHA-256(predicate.reference.toCBOR())[0:4]`
 
 #### Strong Anonymity Properties:
 1. **Sender Anonymity**: The oracle cannot determine who initiated a transaction
-2. **Recipient Anonymity**: The oracle cannot determine who received a token  
+2. **Recipient Anonymity**: The oracle cannot determine who received a token
 3. **Transaction Unlinkability**: Different transactions by the same party are unlinkable
 4. **Forward Privacy**: Past owners cannot track future token movements
 5. **Amount Privacy**: Transaction values are hidden from the oracle
@@ -264,8 +288,8 @@ Where `checksum = SHA-256(predicate.reference.toCBOR())[0:4]`
 #### Anonymity Mechanisms:
 
 **Blinding via Masked Predicates**:
-- The `nonce` field in `MaskedPredicate` acts as a blinding factor
-- `reference = Hash(type || tokenType || algorithm || hashAlg || publicKey || nonce)`
+- The `mask` field in `MaskedPredicate` acts as a blinding factor
+- `reference = Hash(type || tokenType || algorithm || hashAlg || publicKey || mask)`
 - Different tokens controlled by the same key have unlinkable references
 
 **Pointer-based Addressing**:
@@ -275,7 +299,7 @@ Where `checksum = SHA-256(predicate.reference.toCBOR())[0:4]`
 
 ### 7.2 Anonymity Limitations
 
-1. **Prover Trust**: The Unicity Prover could attempt traffic analysis, though it sees only commitments
+1. **Trusting the Service**: The Unicity Service could attempt traffic analysis, though it sees only commitments
 2. **Network Analysis**: Communication channels between parties may be observable
 3. **Timing Correlation**: Transaction timing patterns may reveal relationships
 4. **Value Correlation**: If token amounts are revealed in other contexts, they may enable correlation
@@ -293,8 +317,8 @@ Where `checksum = SHA-256(predicate.reference.toCBOR())[0:4]`
 ### 8.2 Security Assumptions
 
 1. **Discrete Logarithm Problem**: ECDSA security on secp256k1
-2. **Hash Function Security**: SHA-256 preimage and collision resistance  
-3. **Prover Honest-but-Curious**: Unicity Prover correctly processes requests but may attempt traffic analysis
+2. **Hash Function Security**: SHA-256 preimage and collision resistance
+3. **Honest-but-Curious Service**: Unicity Service correctly processes requests but may attempt traffic analysis
 4. **Secure Channels**: Communication channels between parties provide confidentiality
 
 ## 9. Protocol Operation Flow
@@ -304,54 +328,52 @@ Where `checksum = SHA-256(predicate.reference.toCBOR())[0:4]`
 ```mermaid
 sequenceDiagram
     participant U as User (Alice)
-    participant P as Unicity Prover
-    
-    Note over U: Generate token parameters
-    U->>U: tokenId ← {0,1}^256
-    U->>U: tokenType ← {0,1}^256
-    U->>U: sk_A ← {0,1}^256
-    U->>U: nonce ← {0,1}^256
-    
-    Note over U: Create initial predicate
-    U->>U: pk_A ← G^{sk_A}
-    U->>U: ref ← H(type || tokenType || alg || pk_A || nonce)
-    U->>U: predicate.hash ← H(ref || tokenId)
+    participant P as Unicity Service
+
+    Note over U: Obtain token parameters
+    U->>U: (tokenId, tokenType)  ← App
+    U->>U: (sk_A, pk_A) ← G^λ
+    U->>U: mask ← {0,1}^λ
+
+    Note over U: Create initial ownership condition
+    U->>U: ref ← H(type || tokenType || alg || pk_A || mask)
+    U->>U: ownership.hash ← H(ref || tokenId)
     U->>U: address ← "DIRECT://" || ref || H(ref)[0:4]
-    
+
     Note over U: Construct mint transaction
     U->>U: mintData.hash ← H(tokenId || tokenType || H(tokenData) || dataHash || coinData || address || salt || reason)
     U->>U: sourceState ← H(tokenId || MINT_SUFFIX)
-    U->>U: requestId ← H(pk_{minter} || sourceState)
-    
+    U->>U: stateId ← H(pk_{minter} || sourceState)
+
     Note over U: Create commitment with universal minter
     U->>U: σ_{mint} ← Sign(sk_{minter}, mintData.hash)
     U->>U: authenticator ← (pk_{minter}, σ_{mint}, sourceState)
-    U->>U: commitment ← (requestId, mintData, authenticator)
-    
-    Note over U,P: Submit to Unicity Prover
-    U->>P: submitCommitment(requestId, mintData.hash, authenticator)
-    
-    Note over P: Validate commitment
+    U->>U: commitment ← (stateId, mintData, authenticator)
+
+    Note over U,P: Submit to Unicity Service
+    U->>P: submitCommitment(stateId, mintData.hash, authenticator)
+
+    Note over P: Validate commitment message
     P->>P: Verify(pk_{minter}, mintData.hash, σ_{mint}) = 1
-    P->>P: requestId ?= H(pk_{minter} || sourceState)
-    P->>P: SpentStateSet ← SpentStateSet ∪ {requestId}
+    P->>P: stateId ?= H(pk_{minter} || sourceState)
+    P->>P: SpentStateSet ← SpentStateSet ∪ {stateId}
     P->>U: SUCCESS
-    
+
     Note over U,P: Retrieve inclusion proof
-    U->>P: getInclusionProof(requestId)
+    U->>P: getInclusionProof(stateId)
     P->>U: InclusionProof(π_{inclusion}, merkleRoot)
-    
+
     Note over U: Construct final token
-    U->>U: stateHash ← H(predicate.hash || stateData)
+    U->>U: stateHash ← H(ownership.hash || stateData)
     U->>U: token ← (tokenState, mintTransaction, [])
 ```
 
 ### 9.2 Token Creation (Minting) - Step-by-Step
 1. Generate token parameters (ID, type, initial data)
-2. Create initial owner predicate and address  
+2. Create initial ownership condition and respective address
 3. Construct `MintTransactionData` with token details
 4. Create commitment using universal minter secret
-5. Submit commitment to Unicity Prover
+5. Submit commitment to Unicity Service
 6. Receive inclusion proof confirming unique creation
 7. Construct initial token with genesis transaction
 
@@ -361,57 +383,56 @@ sequenceDiagram
 sequenceDiagram
     participant A as Alice (Sender)
     participant B as Bob (Recipient)
-    participant P as Unicity Prover
-    
+    participant P as Unicity Service
+
     Note over B: Preparation Phase
-    B->>B: sk_B ← {0,1}^256
-    B->>B: nonce_B ← {0,1}^256
-    B->>B: pk_B ← G^{sk_B}
-    B->>B: ref_B ← H(type || tokenType || alg || pk_B || nonce_B)
+    B->>B: (pk_B, sk_B) ← G^λ
+    B->>B: mask_B ← {0,1}^λ
+    B->>B: ref_B ← H(type || tokenType || alg || pk_B || mask_B)
     B->>B: address_B ← "DIRECT://" || ref_B || H(ref_B)[0:4]
     B->>B: newData ← {0,1}^*
     B->>B: h_data ← H(newData)
-    
+
     Note over B,A: Share transfer parameters
     B->>A: (address_B, h_data)
-    
+
     Note over A: Transfer Phase - Create Transaction
-    A->>A: salt ← {0,1}^256
+    A->>A: salt ← {0,1}^λ
     A->>A: message ← {0,1}^*
     A->>A: h_tx ← H(stateHash_A || h_data || address_B || salt || message)
-    A->>A: requestId ← H(pk_A || stateHash_A)
+    A->>A: stateId ← H(pk_A || stateHash_A)
     A->>A: σ_A ← Sign(sk_A, h_tx)
     A->>A: authenticator ← (pk_A, σ_A, stateHash_A)
-    A->>A: commitment ← (requestId, h_tx, authenticator)
-    
+    A->>A: commitment ← (stateId, h_tx, authenticator)
+
     Note over A,P: Submit commitment
-    A->>P: submitCommitment(requestId, h_tx, authenticator)
-    
+    A->>P: submitCommitment(stateId, h_tx, authenticator)
+
     Note over P: Validate and record
     P->>P: Verify(pk_A, h_tx, σ_A) = 1
-    P->>P: requestId ?= H(pk_A || stateHash_A)
-    P->>P: if requestId ∈ SpentStateSet then return DOUBLE_SPEND
-    P->>P: SpentStateSet ← SpentStateSet ∪ {requestId}
+    P->>P: stateId ?= H(pk_A || stateHash_A)
+    P->>P: if stateId ∈ SpentStateSet then return DOUBLE_SPEND
+    P->>P: SpentStateSet ← SpentStateSet ∪ {stateId}
     P->>A: SUCCESS
-    
+
     Note over A,P: Get inclusion proof
-    A->>P: getInclusionProof(requestId)
+    A->>P: getInclusionProof(stateId)
     P->>A: InclusionProof(π_{inclusion}, merkleRoot)
-    
+
     Note over A: Create complete transaction
     A->>A: transaction ← (txData, π_{inclusion})
-    
+
     Note over A,B: Transfer token and transaction
     A->>B: (token, transaction)
-    
+
     Note over B: Completion Phase - Import and Verify
     B->>B: ∀π ∈ token.history: VerifyInclusionProof(π) = 1
     B->>B: VerifyInclusionProof(transaction.π_{inclusion}) = 1
     B->>B: transaction.recipient ?= address_B
-    
+
     Note over B: Finalize ownership
-    B->>B: predicate_B.hash ← H(ref_B || tokenId)
-    B->>B: stateHash_B ← H(predicate_B.hash || newData)
+    B->>B: ownership_B.hash ← H(ref_B || tokenId)
+    B->>B: stateHash_B ← H(ownership_B.hash || newData)
     B->>B: H(newData) ?= transaction.h_data
     B->>B: updatedToken ← (stateHash_B, genesis, [...history, transaction])
 ```
@@ -419,85 +440,85 @@ sequenceDiagram
 ### 9.4 Token Transfer - Step-by-Step
 
 1. **Preparation Phase**:
-   - Recipient generates fresh predicate and address
+   - Recipient generates fresh ownership condition and respective address
    - Recipient shares address and optional data hash with sender
 
 2. **Transfer Phase**:
    - Sender creates `TransactionData` with recipient address
    - Sender creates `Commitment` with ownership proof
-   - Sender submits commitment to Unicity Prover
-   - Prover returns inclusion proof confirming uniqueness
+   - Sender submits commitment to Unicity Service
+   - Service returns inclusion proof confirming uniqueness
 
-3. **Completion Phase**:  
+3. **Completion Phase**:
    - Sender creates `Transaction` from commitment and inclusion proof
    - Sender transfers token and transaction to recipient
    - Recipient verifies complete token history and transaction
    - Recipient resolves transaction into transition using private information
-   - Token state updated with new ownership predicate
+   - Token state updated with new ownership condition
 
 ### 9.5 Privacy and Cryptographic Relationships Diagram
 
 ```mermaid
 graph TB
     subgraph "User Alice"
-        AS["sk_A ∈ {0,1}^256"]
-        AN["nonce_A ∈ {0,1}^256"]
+        AS["sk_A ∈ {0,1}^λ"]
+        AN["mask_A ∈ {0,1}^λ"]
         APK["pk_A ∈ G"]
-        AP["predicate_A"]
-        ATS["stateHash_A ∈ {0,1}^256"]
+        AP["ownership_A"]
+        ATS["stateHash_A ∈ {0,1}^λ"]
     end
-    
+
     subgraph "User Bob"
-        BS["sk_B ∈ {0,1}^256"]
-        BN["nonce_B ∈ {0,1}^256"] 
+        BS["sk_B ∈ {0,1}^λ"]
+        BN["mask_B ∈ {0,1}^λ"]
         BPK["pk_B ∈ G"]
-        BP["predicate_B"]
-        BTS["stateHash_B ∈ {0,1}^256"]
+        BP["ownership_B"]
+        BTS["stateHash_B ∈ {0,1}^λ"]
     end
-    
-    subgraph "Unicity Prover View"
-        RID["requestId ∈ {0,1}^256"]
-        TXH["h_tx ∈ {0,1}^256"]
+
+    subgraph "Unicity Service View"
+        RID["stateId ∈ {0,1}^λ"]
+        TXH["h_tx ∈ {0,1}^λ"]
         AUTH["(pk, σ, s)"]
         PK["pk ∈ G"]
-        SH["s ∈ {0,1}^256"]
+        SH["s ∈ {0,1}^λ"]
         SPENT["SpentStateSet"]
     end
-    
+
     subgraph "Privacy Mechanisms"
-        MASK["Masked Predicate"]
+        MASK["Blinded Ownership"]
         ADDR["One-time Address"]
-        BLIND["Blinding Factor (nonce)"]
+        BLIND["Blinding Factor (mask)"]
     end
-    
+
     subgraph "Cryptographic Operations"
         HASH1["$$H(pk || s)$$"]
-        HASH2["$$H(type || tokenType || alg || pk || nonce)$$"]
+        HASH2["$$H(type || tokenType || alg || pk || mask)$$"]
         HASH3["$$H(reference || tokenId)$$"]
         SIG["$$σ = Sign(sk, h_{tx})$$"]
     end
-    
+
     %% Alice's cryptographic derivations
     AS --> APK
     AS --> SIG
     APK --> AP
     AN --> AP
     AP --> ATS
-    
-    %% Bob's cryptographic derivations  
+
+    %% Bob's cryptographic derivations
     BS --> BPK
     BPK --> BP
     BN --> BP
     BP --> BTS
-    
-    %% Masked predicate construction
+
+    %% Constructing a blinded ownership condition
     APK --> HASH2
     AN --> HASH2
     HASH2 --> MASK
     MASK --> ADDR
     AN --> BLIND
-    
-    %% What Unicity Prover sees
+
+    %% What Unicity Service sees
     APK --> PK
     ATS --> SH
     PK --> HASH1
@@ -507,49 +528,49 @@ graph TB
     PK --> AUTH
     SH --> AUTH
     AUTH --> SPENT
-    
+
     %% Privacy boundaries
     classDef private fill:#ffcccc,stroke:#ff0000,stroke-width:2px
-    classDef public fill:#ccffcc,stroke:#00ff00,stroke-width:2px  
-    classDef prover fill:#ccccff,stroke:#0000ff,stroke-width:2px
-    
+    classDef public fill:#ccffcc,stroke:#00ff00,stroke-width:2px
+    classDef service fill:#ccccff,stroke:#0000ff,stroke-width:2px
+
     class AS,BS,AN,BN,ATS,BTS private
     class APK,BPK,RID,TXH,AUTH public
-    class PK,SH,SPENT prover
-    
+    class PK,SH,SPENT service
+
     %% Labels
     HASH1 -.-> |"Unique State ID"| RID
-    HASH2 -.-> |"Unlinkable Reference"| MASK  
+    HASH2 -.-> |"Unlinkable Reference"| MASK
     BLIND -.-> |"Prevents Correlation"| MASK
     ADDR -.-> |"One-time Use"| BP
 ```
 
 **Legend:**
 - 🔴 **Red (Private)**: Information known only to individual users
-- 🟢 **Green (Public)**: Information that may be shared between parties  
-- 🔵 **Blue (Prover)**: Information visible to the Unicity Prover
+- 🟢 **Green (Public)**: Information that may be shared between parties
+- 🔵 **Blue (Service)**: Information visible to the Unicity Service
 - **Dashed arrows**: Cryptographic relationships and privacy properties
 
 **Key Privacy Properties Illustrated:**
-1. **Blinding**: Alice's nonce creates unlinkable predicates across different tokens
+1. **Blinding**: Alice's blinding mask creates unlinkable ownership conditions across different tokens
 2. **One-time Addresses**: Bob generates fresh addresses for each transfer
-3. **Minimal Prover Knowledge**: Unicity Prover sees only hashes and public keys, not token details
+3. **Minimal Unicity Service Knowledge**: Unicity Service sees only hashes and public keys, not token details
 4. **Forward Privacy**: Once transferred, Alice cannot link Bob's future token movements
 
 ## 10. Implementation Considerations
 
 ### 10.1 Key Generation and Management
 - Private keys must be securely generated and stored
-- Nonces for masked predicates should use cryptographically secure randomness
+- Blinding mask for blinded ownership conditions should use cryptographically secure randomness
 - Key derivation should follow established standards (e.g., BIP-44 for hierarchical keys)
 
 ### 10.2 Verification Requirements
 - Complete token history must be verified before accepting transfers
-- Inclusion proofs must be validated against known Unicity Prover public keys
-- Predicate verification requires checking all cryptographic signatures
+- Inclusion proofs must be validated against known Unicity Service public keys
+- Ownership condition verification requires checking all cryptographic signatures
 
 ### 10.3 Privacy Best Practices
-- Always use masked predicates for privacy-sensitive applications
+- Always use blinded ownership conditions for privacy-sensitive applications
 - Generate fresh addresses for each transfer
 - Avoid reusing key material across different tokens
 - Implement secure deletion of sensitive intermediate values
@@ -562,7 +583,7 @@ For formal analysis, the protocol state transitions can be expressed as:
 State Transition Function:
 τ: (Token × PrivateKey × Address × Data) → (Commitment × Transaction)
 
-Token Update Function:  
+Token Update Function:
 υ: (Token × Transaction × TokenState) → Token
 
 Verification Function:
@@ -571,11 +592,11 @@ Verification Function:
 
 Where valid state transitions satisfy:
 - `φ(τ.token, privateKey.publicKey) = true` (ownership verification)
-- Unicity Prover accepts `τ.commitment` (uniqueness verification)  
+- Unicity Service accepts `τ.commitment` (uniqueness verification)
 - `υ(token, τ.transaction, newState)` produces valid updated token
 
 This formal structure enables rigorous security analysis and protocol verification.
 
 ---
 
-*This documentation is based on analysis of the TypeScript implementation in the state-transition-sdk and represents the actual protocol behavior rather than speculative design documents.*
+*This documentation is mostly AI generated based on analysis of the TypeScript implementation in the state-transition-sdk; while ignoring the design documents.*
