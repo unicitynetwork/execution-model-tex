@@ -22,10 +22,13 @@ Proposed changes:
 | -------------  | -------------   |
 | Transition     | Transfer (pending state) |
 | Transaction    | Transfer (final state)   |
+| Commitment     | ??? Request         |
 | Authenticator  | Spend Authorization |
 | Masked Predicate | Blinded Ownership Condition |
+| Unmasked Predicate | whatever so that it is clear that there is no unmasking as a step |
 | Pointer        | one-time address? |
-| Authenticator  | Spend Authorization |
+| Masked Ownership Condition, not masked Ownership Condition | same same, different mask generation algorithm |
+
 
 
 ## 1. Core Cryptographic Primitives
@@ -65,7 +68,6 @@ Token := {
 TokenState := {
   unlock: OwnershipCondition,  // Ownership verification mechanism
   data: bytes?,                // Optional state-specific data
-  hash: Hash(predicate.hash || data)  // State commitment
 }
 ```
 
