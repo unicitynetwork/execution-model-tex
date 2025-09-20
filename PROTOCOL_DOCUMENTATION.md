@@ -12,22 +12,25 @@ There are following changes in terminology compared to the source code:
 | -------------  | -------------   |
 | Unicity Prover | Unicity Service |
 | `RequestId`    | `StateId`       |
-| Predicate      | Ownership Condition |
+| Predicate      | Locking Condition |
 | nonce          | blinding mask (where appropriate)|
+| data           | aux (auxiliary data) |
+| newData        | aux'            |
 
 
 Proposed changes:
 
 | Source Code    | Here            |
 | -------------  | -------------   |
+| argument to a Predicate | witness |
 | Transition     | Transfer (pending state) |
 | Transaction    | Transfer (final state)   |
-| Commitment     | ??? Request         |
-| Authenticator  | Spend Authorization |
-| Masked Predicate | Blinded Ownership Condition |
+| Commitment     | (Unicity Service) Request |
+| Authenticator  | Spend Authorization, or just dissolve into its components? |
+| Masked Predicate | Blinded Locking Condition |
 | Unmasked Predicate | whatever so that it is clear that there is no unmasking as a step |
 | Pointer        | one-time address? |
-| Masked Ownership Condition, not masked Ownership Condition | same same, different mask generation algorithm |
+| Masked Predicate, Unasked Predicate | unify these, just use different mask generation algorithm (or a flag at higher level API) |
 
 
 
@@ -66,18 +69,18 @@ Token := {
 
 ```
 TokenState := {
-  unlock: OwnershipCondition,  // Ownership verification mechanism
-  data: bytes?,                // Optional state-specific data
+  lock: LockingCondition,  // Ownership verification mechanism
+  aux: bytes?,                // Optional state-specific auxiliary data
 }
 ```
 
-### 2.2 Ownership Condition System
+### 2.2 Locking Condition System
 
-**Ownership Conditions** define token ownership and spending conditions. Two primary types exist:
+**Locking Conditions** define token ownership and spending conditions. Two primary types exist:
 
-#### Unmasked Ownership Condition (Public Ownership)
+#### Locking Condition (Public Ownership)
 ```
-OwnershipCondition := {
+LockingCondition := {
   type: "UNMASKED",
   publicKey: PublicKey,         // Owner's public key
   algorithm: string,            // Signature algorithm identifier
@@ -88,9 +91,9 @@ OwnershipCondition := {
 }
 ```
 
-#### Blinded Ownership Condition (Privacy-Preserving Ownership)
+#### Blinded Locking Condition (Privacy-Preserving Ownership)
 ```
-MaskedOwnershipCondition := {
+MaskedLockingCondition := {
   type: "MASKED",
   publicKey: PublicKey,         // Owner's public key
   algorithm: string,            // Signature algorithm identifier
@@ -101,7 +104,7 @@ MaskedOwnershipCondition := {
 }
 ```
 
-Blinded ownership conditions include a random blinding mask in the reference calculation, providing unlinkability between different token states owned by the same entity.
+Blinded locking conditions include a random blinding mask in the reference calculation, providing unlinkability between different token states owned by the same entity.
 
 ## 3. Unicity Service Interface
 
@@ -198,7 +201,7 @@ Information Learned by Unicity Service:
   - h_tx ∈ {0,1}^λ: Hash of transaction (but not transaction details)
 
 Information Hidden from Unicity Service:
-  - Token ID, type, or any token-specific data
+  - Token ID, type, or auxiliary data
   - Transaction recipient or transfer amount
   - Actual token state contents (only sees hash)
   - Relationship between different transactions by same owner
@@ -239,7 +242,7 @@ MintTransactionData := {
   tokenId: TokenId,              // Unique token identifier
   tokenType: TokenType,          // Token class identifier
   tokenData: bytes,              // Immutable token data
-  coinData: CoinData?,           // Optional fungible amounts
+  coinData: CoinData?,           // Optional payload of fungible coins + values
   sourceState: stateId,          // Pseudo-source for minting
   recipient: Address,            // Initial owner address
   salt: bytes,                   // Randomness for ownership condition derivation
@@ -267,10 +270,10 @@ Where `checksum = SHA-256(predicate.reference.toCBOR())[0:4]`
 
 ### 6.2 Privacy-Preserving Mechanisms
 
-#### Masked Ownership Condition System
-- **Unlinkability**: Random blinding masks in masked ownership conditions prevent correlation of token states owned by the same entity
+#### Masked Locking Condition System
+- **Unlinkability**: Random blinding masks in masked locking conditions prevent correlation of token states owned by the same entity
 - **Forward Privacy**: Previous owners cannot track subsequent token movements
-- **Selective Disclosure**: Only the current owner can prove ownership without revealing historical ownership
+- **Selective Disclosure**: Only the current owner can prove ability to unlock without revealing historical ownership
 
 #### Salt-Based Privacy
 - **Transaction Unlinkability**: Random salts in transactions prevent correlation
@@ -289,7 +292,7 @@ Where `checksum = SHA-256(predicate.reference.toCBOR())[0:4]`
 
 #### Anonymity Mechanisms:
 
-**Blinding via Masked Predicates**:
+**Blinding via Masked Locking Conditions**:
 - The `mask` field in `MaskedPredicate` acts as a blinding factor
 - `reference = Hash(type || tokenType || algorithm || hashAlg || publicKey || mask)`
 - Different tokens controlled by the same key have unlinkable references
@@ -337,9 +340,9 @@ sequenceDiagram
     U->>U: (sk_A, pk_A) ← G^λ
     U->>U: mask ← {0,1}^λ
 
-    Note over U: Create initial ownership condition
+    Note over U: Create initial locking condition
     U->>U: ref ← H(type || tokenType || alg || pk_A || mask)
-    U->>U: ownership.hash ← H(ref || tokenId)
+    U->>U: lock.hash ← H(ref || tokenId)
     U->>U: address ← "DIRECT://" || ref || H(ref)[0:4]
 
     Note over U: Construct mint transaction
@@ -366,13 +369,13 @@ sequenceDiagram
     P->>U: InclusionProof(π_{inclusion}, merkleRoot)
 
     Note over U: Construct final token
-    U->>U: stateHash ← H(ownership.hash || stateData)
+    U->>U: stateHash ← H(lock.hash || stateData)
     U->>U: token ← (tokenState, mintTransaction, [])
 ```
 
 ### 9.2 Token Creation (Minting) - Step-by-Step
 1. Generate token parameters (ID, type, initial data)
-2. Create initial ownership condition and respective address
+2. Create initial locking condition and respective address
 3. Construct `MintTransactionData` with token details
 4. Create commitment using universal minter secret
 5. Submit commitment to Unicity Service
@@ -392,16 +395,16 @@ sequenceDiagram
     B->>B: mask_B ← {0,1}^λ
     B->>B: ref_B ← H(type || tokenType || alg || pk_B || mask_B)
     B->>B: address_B ← "DIRECT://" || ref_B || H(ref_B)[0:4]
-    B->>B: newData ← {0,1}^*
-    B->>B: h_data ← H(newData)
+    B->>B: aux' ← App
+    B->>B: h_aux' ← H(aux')
 
     Note over B,A: Share transfer parameters
-    B->>A: (address_B, h_data)
+    B->>A: (address_B, h_aux')
 
     Note over A: Transfer Phase - Create Transaction
     A->>A: salt ← {0,1}^λ
-    A->>A: message ← {0,1}^*
-    A->>A: h_tx ← H(stateHash_A || h_data || address_B || salt || message)
+    A->>A: message ← App
+    A->>A: h_tx ← H(stateHash_A || h_aux || address_B || salt || message)
     A->>A: stateId ← H(pk_A || stateHash_A)
     A->>A: σ_A ← Sign(sk_A, h_tx)
     A->>A: authenticator ← (pk_A, σ_A, stateHash_A)
@@ -433,21 +436,21 @@ sequenceDiagram
     B->>B: transaction.recipient ?= address_B
 
     Note over B: Finalize ownership
-    B->>B: ownership_B.hash ← H(ref_B || tokenId)
-    B->>B: stateHash_B ← H(ownership_B.hash || newData)
-    B->>B: H(newData) ?= transaction.h_data
+    B->>B: lock_B.hash ← H(ref_B || tokenId)
+    B->>B: stateHash_B ← H(lock_B.hash || aux')
+    B->>B: H(aux') ?= transaction.h_aux
     B->>B: updatedToken ← (stateHash_B, genesis, [...history, transaction])
 ```
 
 ### 9.4 Token Transfer - Step-by-Step
 
 1. **Preparation Phase**:
-   - Recipient generates fresh ownership condition and respective address
-   - Recipient shares address and optional data hash with sender
+   - Recipient generates fresh locking condition and respective address
+   - Recipient shares address and optional auxiliary data hash with sender
 
 2. **Transfer Phase**:
    - Sender creates `TransactionData` with recipient address
-   - Sender creates `Commitment` with ownership proof
+   - Sender creates `Commitment` with proof of being able to unlock the locking condition
    - Sender submits commitment to Unicity Service
    - Service returns inclusion proof confirming uniqueness
 
@@ -456,7 +459,7 @@ sequenceDiagram
    - Sender transfers token and transaction to recipient
    - Recipient verifies complete token history and transaction
    - Recipient resolves transaction into transition using private information
-   - Token state updated with new ownership condition
+   - Token state updated with new locking condition
 
 ### 9.5 Privacy and Cryptographic Relationships Diagram
 
@@ -466,7 +469,7 @@ graph TB
         AS["sk_A ∈ {0,1}^λ"]
         AN["mask_A ∈ {0,1}^λ"]
         APK["pk_A ∈ G"]
-        AP["ownership_A"]
+        AP["lock_A"]
         ATS["stateHash_A ∈ {0,1}^λ"]
     end
 
@@ -474,7 +477,7 @@ graph TB
         BS["sk_B ∈ {0,1}^λ"]
         BN["mask_B ∈ {0,1}^λ"]
         BPK["pk_B ∈ G"]
-        BP["ownership_B"]
+        BP["lock_B"]
         BTS["stateHash_B ∈ {0,1}^λ"]
     end
 
@@ -488,7 +491,7 @@ graph TB
     end
 
     subgraph "Privacy Mechanisms"
-        MASK["Blinded Ownership"]
+        MASK["Blinded Locking Condition"]
         ADDR["One-time Address"]
         BLIND["Blinding Factor (mask)"]
     end
@@ -513,7 +516,7 @@ graph TB
     BN --> BP
     BP --> BTS
 
-    %% Constructing a blinded ownership condition
+    %% Constructing a blinded locking condition
     APK --> HASH2
     AN --> HASH2
     HASH2 --> MASK
@@ -554,7 +557,7 @@ graph TB
 - **Dashed arrows**: Cryptographic relationships and privacy properties
 
 **Key Privacy Properties Illustrated:**
-1. **Blinding**: Alice's blinding mask creates unlinkable ownership conditions across different tokens
+1. **Blinding**: Alice's blinding mask creates unlinkable locking conditions across different tokens
 2. **One-time Addresses**: Bob generates fresh addresses for each transfer
 3. **Minimal Unicity Service Knowledge**: Unicity Service sees only hashes and public keys, not token details
 4. **Forward Privacy**: Once transferred, Alice cannot link Bob's future token movements
@@ -563,16 +566,16 @@ graph TB
 
 ### 10.1 Key Generation and Management
 - Private keys must be securely generated and stored
-- Blinding mask for blinded ownership conditions should use cryptographically secure randomness
+- Blinding mask for blinded locking conditions should use cryptographically secure randomness
 - Key derivation should follow established standards (e.g., BIP-44 for hierarchical keys)
 
 ### 10.2 Verification Requirements
 - Complete token history must be verified before accepting transfers
 - Inclusion proofs must be validated against known Unicity Service public keys
-- Ownership condition verification requires checking all cryptographic signatures
+- Locking condition verification requires checking all cryptographic signatures
 
 ### 10.3 Privacy Best Practices
-- Always use blinded ownership conditions for privacy-sensitive applications
+- Always use blinded Locking conditions for privacy-sensitive applications
 - Generate fresh addresses for each transfer
 - Avoid reusing key material across different tokens
 - Implement secure deletion of sensitive intermediate values
