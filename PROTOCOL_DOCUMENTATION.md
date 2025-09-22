@@ -33,7 +33,6 @@ Proposed changes:
 | Masked Predicate, Unasked Predicate | unify these, just use different mask generation algorithm (or a flag at higher level API) |
 
 
-
 ## 1. Core Cryptographic Primitives
 
 ### 1.1 Hash Functions and Digital Signatures

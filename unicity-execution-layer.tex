@@ -1,0 +1,951 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{pgf-umlsd} % sequence diagram
+\usepackage{amssymb}
+\usepackage{enumitem}
+\setlist[itemize]{noitemsep} % compact itemize
+% \setlist[enumerate]{noitemsep}
+
+\newtheorem{definition}{Definition}[section]
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}{Lemma}[section]
+
+\newenvironment{proof}{\textsf{Proof}.}{\hfill$\Box$}
+
+\newcommand{\bits}[1]{\{0,1\}^{#1}}
+\newcommand{\negl}[0]{\mathsf{negl}} % negligible quantity
+
+\newcommand{\keygen}[0]{\mathsf{G}}
+\newcommand{\sig}[0]{\mathsf{S}}
+\newcommand{\sigver}[0]{\mathsf{V}}
+
+\newcommand{\pubkey}[0]{\mathsf{pk}}
+\newcommand{\prikey}[0]{\mathsf{sk}}
+
+\newcommand{\hfgen}[0]{\mathsf{G}} % parameter generation for a hash function family
+\newcommand{\hfunc}[0]{\mathsf{H}} % parametrized hashing algorithm
+
+\newcommand{\setup}[0]{\mathsf{Set}}
+\newcommand{\commit}[0]{\mathsf{Com}}
+\newcommand{\open}[0]{\mathsf{Open}}
+\newcommand{\commitc}[0]{\mathsf{Com}^{c}}
+
+\newcommand{\param}[0]{\mathsf{par}}
+
+\newcommand{\unisrv}[0]{\mathsf{US}}
+
+\newcommand{\sthash}[0]{h_\mathsf{st}}
+\newcommand{\txhash}[0]{h_\mathsf{tx}}
+
+\newcommand{\auxd}[0]{\mathsf{aux}}
+
+\newcommand{\univer}[0]{\mathcal{V}}
+
+\newcommand{\certver}[0]{\mathcal{V}_\mathsf{cert}}
+
+\newcommand{\pinc}[0]{\pi_{\mathsf{inc}}}
+
+\newcommand{\prob}[0]{\mathsf{Pr}} % probability function
+
+\title{ The Unicity Execution Layer }
+\author{Ahto Buldas \and Ahto Truu \and Risto Laanoja \and Vladimir Rogojin}
+\date{September 2025}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+Blockchain technology has revolutionized digital asset management by enabling trustless peer-to-peer transactions without relying on centralized authorities. However, traditional blockchain architectures face fundamental scalability limitations that hinder their adoption for high-throughput applications. The core bottleneck stems from the fact that the ``security'' depends on the number of participating validators, which all have to participate in consensus on ordering, re-execute transactions, and store every produced block.
+
+This paper introduces \emph{Unicity}, a novel blockchain infrastructure designed to enable secure off-chain transactions while maintaining the trustless guarantees of traditional blockchains. The key insight underlying Unicity is that the vast majority of blockchain operations—transaction execution, smart contract processing, and state transitions—can be moved off-chain, leaving only the essential double-spending prevention mechanism on-chain. This also simplifies on-chain operations, making efficient and self-authenticating implementations possible.
+
+By minimizing the data that must be processed by the consensus layer, Unicity achieves linear scalability while preserving the security properties that make blockchains trustworthy. The system consists of three hierarchical layers: the Consensus Layer provides decentralized agreement and cryptoeconomical incentives, the Aggregation Layer maintains a distributed append-only dictionary of spent token states, and the Execution Layer handles peer-to-peer transaction processing and business logic.
+
+Our approach differs fundamentally from existing scaling solutions. Rather than optimizing transaction throughput within the constraints of traditional blockchain architectures, Unicity reconceptualizes the shared server-side functionality as a minimal, trustless service which prevents double-spending. This architectural shift enables transactions to occur off-chain and, with hardware-based unicity proving functionality, completely offline; while maintaining cryptographic guarantees against fraud.
+
+The contributions of this paper include: (1) a formal security model for off-chain transactions with on-chain double-spending prevention, modeled as trusted service in this paper's scope, (2) cryptographic protocols ensuring transaction privacy and preventing attacks of blocking token spending, (3) formal proofs of these security properties.
+
+\subsection{Motivation}
+
+\begin{figure}[!htbp]
+ \begin{minipage}[h]{0.55\linewidth}
+        \centering
+                \includegraphics[width=\columnwidth]{pic/traditional.drawio}
+                \caption{Data flow of a typical blockchain.} \label{fi:traditional}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[h]{0.44\linewidth}
+        \centering
+                \includegraphics[width=\columnwidth]{pic/unicity.drawio}
+                \caption{Data flow of Unicity transactions.}\label{fi:unicity}
+    \end{minipage}
+\end{figure}
+
+Traditional blockchain architectures, illustrated in Figure~\ref{fi:traditional}, require every validator node to process all transactions sequentially. This design creates several fundamental bottlenecks: (1) \emph{computational overhead} from validating every transaction, (2) \emph{storage requirements} that grow linearly with transaction history, and (3) \emph{bandwidth limitations} from broadcasting all transaction data to every node. These constraints result in throughput limitations measured in tens of transactions per second for major blockchain networks, and transaction processing latency (time to finality) which is not suitable for interactive use cases.
+
+Existing scaling approaches attempt to optimize within these architectural constraints. Layer-2 solutions batch transactions but still require periodic settlement on the main chain. Sharding distributes computation but introduces complex cross-shard communication protocols. Both approaches face fundamental trade-offs between decentralization, security, and scalability.
+
+Unicity takes a fundamentally different approach by recognizing that most blockchain operations can be moved off-chain and performed by the party who is naturally interested in the validity of the transaction, the recipient (relying party). The key insight is that central coordination is required only to prevent double-spending---the creation of multiple valid transactions spending the same digital asset. Other operations, including transaction execution, smart contract processing, state updates, and data availability can be performed by interested parties without global agreement.
+
+Figure~\ref{fi:unicity} illustrates the Unicity transaction flow. Rather than broadcasting full transaction data to all network participants, Unicity maintains only a cryptographic commitment to spent asset states.
+
+Unicity as a transacting framework provides three essential guarantees: (1) \emph{unique spending}—a digital asset can be spent at maximum once, (2) \emph{non-blocking}—only the legitimate owner of an asset can mark this asset as spent, and (3) \emph{privacy}—transaction details remain confidential between participants, including all subsequent owners of a token and also the Unicity Service.
+
+By decoupling transaction execution from consensus, Unicity enables new use cases previously impractical on traditional blockchains. Transactions can occur entirely off-chain, requiring no network connectivity at the time of execution. Multiple parties can transact directly using any communication channel, from internet protocols to physical media exchange. The resulting system scales linearly with the number of participants rather than facing the quadratic complexity growth of traditional blockchain networks.
+
+\subsection{Unicity Protocol}
+
+The Unicity execution framework relies on the \emph{Unicity Service} that maintains a global, append-only registry of spent token states. Each digital token has an associated state hash that uniquely identifies its current ownership and transaction history. When a token owner wishes to transfer ownership, they create a signed transaction that references the current state and specifies the new owner.
+
+\subsubsection{System Architecture}
+
+Unicity employs a hierarchical architecture that provides top-to-bottom decentralization and scalability, as illustrated in Figure~\ref{fig:layers}.
+
+\begin{figure}[!htbp]
+    \centering
+        \begin{tikzpicture}
+            \draw (0,0) rectangle (4,1) node[midway] {Consensus Layer};
+            \draw (2,0) -- (2,-0.5);
+            \draw (0,-1.5) rectangle (4,-0.5) node[midway] {Aggregation Layer};
+            \draw[dashed] (1,-2) -- (3,-2);
+            \draw (2,-1.5) -- (2,-2.5);
+            \draw (0,-3.5) rectangle (4,-2.5) node[midway] {Execution Layer};
+        \end{tikzpicture}
+    \caption{Layered, hierarchical architecture of the Unicity Network.}\label{fig:layers}
+\end{figure}
+
+The three layers serve distinct functions:
+
+\begin{itemize}
+\item \textbf{Consensus Layer} provides decentralized agreement and finality through a combination of Proof-of-Work mining, providing robust decentralization, and BFT consensus with fast and deterministic finality. This layer verifies the integrity of the Aggregation Layer's state transitions and serves as the root of trust for the entire system.
+
+\item \textbf{Aggregation Layer} implements the Unicity Service, maintaining a global append-only registry of spent token states. It provides inclusion and non-inclusion proofs, processes state certification requests, and with these services allows Execution Layer to avoid the risk of double-spending. The layer is sharded for scalability, clustered for high availability, and uses cryptographic consistency proofs to maintain trustless operation.
+
+\item \textbf{Execution Layer} handles transaction processing, smart contract execution (implemented through orchestrated execution of programmable stateful spending conditions) and business logic. This layer operates off-chain and is managed by users and agents who are interested parties in transaction validation and ordering.
+\end{itemize}
+
+\subsubsection{Protocol Participants}
+
+Within this architecture, the protocol involves three entities:
+
+\begin{itemize}
+\item \textbf{Token Owners} possess digital assets represented as tokens with unique state hashes. Owners sign transactions to transfer ownership and request certification from the Aggregation Layer.
+
+\item \textbf{Unicity Service} (provided by the Aggregation Layer) maintains a data store, modeled in this paper as key-value store $R$ where keys are derived from public keys and state hashes, and values are transaction hashes. The service accepts certification requests and provides inclusion proofs for registered transactions.
+
+\item \textbf{Recipients} are the relying parties who receive token transfers and must verify the authenticity of transactions cryptographically before accepting ownership.
+\end{itemize}
+
+\subsubsection{Transaction Structure}
+
+Each transaction $T = (\sthash, D)$ consists of:
+\begin{itemize}
+\item $\sthash$: the current state hash of the token being transferred
+\item $D = (\pubkey', x, \auxd)$: transaction data containing the recipient's public key $\pubkey'$, a random nonce $x$, and auxiliary data $\auxd$
+\end{itemize}
+
+To prevent information leakage, the transaction data $D$ is committed using a perfectly hiding commitment scheme, producing a transaction hash $\txhash = \commitc(H(D))$. The sender signs $H(\sthash, \txhash)$ and submits a certification request $Q = (\pubkey, \sthash, \txhash, \sigma)$ to the Unicity Service.
+
+\subsubsection{Double-Spending Prevention}
+
+The Unicity Service processes certification requests by checking: (1) the digital signature is valid, and (2) the key $H(\pubkey, \sthash)$ has not been previously registered. If both conditions hold, the service records the mapping $R[H(\pubkey, \sthash)] \gets \txhash$ and returns an inclusion proof $\pinc$. This mechanism ensures that each token state can be spent exactly once.
+
+Transaction flow is illustrated by the Sequence diagram (Fig.~\ref{fi:unicity-transaction}).
+
+\begin{figure}[htb]
+    \begin{center}
+        \begin{sequencediagram}
+            \newthread{S}{Sender}
+            \newinst[2]{R}{Recipient}
+            \newinst[2]{US}{Unicity Service}
+
+            % Recipient generates keys and parameters
+            \begin{call}{R}{Setup}{R}{}
+            \end{call}
+
+            % Recipient sends public key to sender
+            \begin{messcall}{R}{$\pubkey'$}{S}
+            \end{messcall}
+
+            % Sender creates transaction data
+            \begin{call}{S}{Prepare tx data}{S}{}
+            \end{call}
+            % Sender requests certification from Unicity Service
+            \begin{messcall}{S}{$Q = (\pubkey, \sthash, \txhash, \sigma)$}{US}
+                \begin{call}{US}{
+                  Validate and set
+                  %R[H(\pubkey, \sthash)] \gets \txhash$
+                    }{US}{}
+                \end{call}
+
+            \end{messcall}
+            \begin{messcall}{US}{$\pinc$}{S}
+            \end{messcall}
+
+            % Sender sends certified transaction to recipient
+            \begin{messcall}{S}{$(T, \sigma, \txhash, d, \pinc)$}{R}
+            \begin{call}{R}{Validate the tx}{R}{}
+            \end{call}
+            \end{messcall}
+
+        \end{sequencediagram}
+        \caption{Simplified Unicity transaction flow.}\label{fi:unicity-transaction}
+    \end{center}
+\end{figure}
+
+The formal analysis that follows demonstrates that this construction provides strong security guarantees against both double-spending and blocking attacks while preserving transaction unlinkability.
+
+
+\section{Preliminaries and Notation}
+
+\subsection{Probabilities}
+
+In the paper, we only use \emph{finite probability spaces} that are defined as pairs $(\Omega, \prob)$ so that $\Omega$ is a finite set and $\prob$ is a function from the powerset (the set of all subsets) of $\Omega$ to the interval $[0,1]$ of real numbers so that:
+\begin{enumerate}
+\item $\prob(\Omega)=1$
+\item $\prob(A\cup B)=\prob(A) + \prob(B)$ for every $A,B\subseteq \Omega$ with $A\cap B=\emptyset$
+\end{enumerate}
+The set $\Omega$ is called the \emph{sample set} and $\prob$ is called the \emph{probability function}. The subsets of $\Omega$ are called \emph{events}. For the probability $\prob[\{\omega\}]$ of a singleton subset we use shorthand notation $\prob[\omega]$.
+By a \emph{random variable} we mean any function $X\colon \Omega \rightarrow R$ where $R$ is called the \emph{range} of the random variable. If $x\in R$ we use the notation $\prob[X=x] = \prob[X^{-1}(x)]$, where $X^{-1}(x)=\{\omega\in\Omega\colon X(\omega)=x\}$ is the $X$-preimage of $x$.
+
+As $\Omega$ is finite, we can express the probability $\prob(A)$ of any event $A$ as the sum $\prob[A]=\sum_\omega \prob[w]\cdot [w\in A]$, where
+$[w\in A]$ is the \emph{Iverson symbol}, i.e. $[w\in A]\in\{0,1\}$ and $[w\in A]=1$ iff $w\in A$. We also use Iverson symbol in a more general case for any mathematical statements $\mathcal{A}$ so that $[\mathcal{A}]=1$ iff $\mathcal{A}$ holds. For example, $\prob[X=x]=\sum_\omega \prob[w]\cdot [X(w)=x]$. Note that $[\mathcal{A}\wedge \mathcal{B}]=[\mathcal{A}]\cdot[\mathcal{B}]$ for any two statements
+$\mathcal{A}$ and $\mathcal{B}$.
+
+By the \emph{probability distribution} of a random variable $X\colon \Omega \rightarrow R$ we mean the function $\mathcal{D}_X\colon R\rightarrow [0,1]$ such that $\mathcal{D}_X(x)=\prob[X=x]$ for every $x\in R$.
+If $\mathcal{D}_X$ is a constant, i.e.
+$\mathcal{D}_X(x)=\frac{1}{|R|}$ for every $x\in R$, then we say that the distribution is \emph{uniform}.
+We use the notation $X\gets R$ to denote that $X$ is a uniformly distributed random variable with range $R$ and also say that $X$ is \emph{uniformly sampled} from $R$.
+A random variable $X\colon \Omega \rightarrow R$ is \emph{$t$-time sampleable} if there is a $t$-time probabilistic Turing machine $\mathsf{M}$
+with all outputs values in $R$ and every output value $x\gets \mathsf{M}$ occurs with probability $\mathcal{D}_X(x)$, i.e. the output distribution of
+$\mathsf{M}$ is $\mathcal{D}_X$.
+
+
+If $X\colon \Omega\rightarrow R_X$ and $Y\colon \Omega\rightarrow R_Y$ are
+random variables, $x\in R_X$ and $y\in R_Y$, then we use the notation
+$\prob[X=x, Y=y] = \prob[X^{-1}(x)\cap Y^{-1}(y)]=\sum_\omega \prob[\omega]\cdot[X(\omega)=x\,\wedge\, Y(\omega)=y]$.
+The probability distribution $\mathcal{D}_{X,Y}\colon R_X \times R_Y\rightarrow [0,1]$ defined by $\mathcal{D}_{X,Y}(x,y)= \prob[X=x, Y=y]$ is called the \emph{joint distribution} of $X$ and $Y$.
+We say that $X$ and $Y$ are \emph{independent} if
+\[
+\prob[X=x,Y=y]=\prob[X=x]\cdot\prob[Y=y]
+\]
+for every $x\in R_X$ and $y\in R_Y$.
+If $(\Omega_1,\prob_1)$ and $(\Omega_2,\prob_2)$ are probability spaces, then their \emph{direct product} is the probability space $(\Omega, \prob)$, such that $\Omega = \Omega_1 \times \Omega_2$ and $\prob[\omega_1,\omega_2]=\prob_1[\omega_1]\cdot \prob_2[\omega_2]$ for every $\omega_1\in\Omega_1$ and $\omega_2\in\Omega_2$. We will omit the indices of the probability functions when it will not cause confusion.
+
+\subsection{Security and Security Proofs}
+
+A \emph{cryptographic primitive} is described as a list of (parametrized) algorithms, correctness conditions (invariants) and attacking scenarios. Adversaries are algorithms that participate in the security scenarios (interacting with environment) and break (are successful in the attacking scenario of) the primitive with certain success probability. If the parameters of a cryptographic primitive are fixed, we get an \emph{instance} of the primitive.
+
+Every instance $f$ of a primitive has \emph{security profile}
+which is a function $S_f\colon [0,1]\rightarrow \mathbb{N}$ that for every $\epsilon\in [0,1]$ returns a lower bound $S_f(\epsilon)$ of the running time of an adversary that is able to break the primitive with success probability at least $\epsilon$. Security profiles are non-decreasing, i.e.
+$S_f(\epsilon)\le S_f(\epsilon')$ whenever $\epsilon\le \epsilon'$.
+Therefore, every adversary that breaks a primitive $f$ with success probability $\epsilon$ has running time $t\ge S_f(\epsilon)$.
+
+Sometimes an instance of a cryptographic primitive $g$ is constructed from instances $f_1, \ldots, f_m$ of other cryptographic primitives (using programming techniques).
+A \emph{security reduction} (or \emph{security proof}) is a mathematical proof that the constructed primitive $g$ hash a security profile $S_g$
+based on the security profiles $S_{f_1}, \ldots, S_{f_m}$ of $f_1, \ldots, f_m$, respectively.
+
+Usually, in such a proof it is assumed that there is an adversary $A$ with running time $t$ that breaks $g$ with success probability $\epsilon$ and then the adversaries $A_1,\ldots, A_m$ are constructed based on $A$ that break $f_1,\ldots,f_m$ with (some unknown) success probabilities $\epsilon_1,\ldots,\epsilon_m$, respectively so that the inequality $\epsilon\le \epsilon_1 + \ldots + \epsilon_m$ holds.
+
+Mostly, $A_1, \ldots, A_m$ use $A$ as black-box, i.e. either call or simulate $A$ and add some computational instructions. In this paper, we only have reductions where $A$ is called only once by every $A_i$ i.e. the running times of $A_1,\ldots,A_m$ are upper-bounded by $\tau_1(t), \ldots, \tau_m(t)$, respectively, where $\tau_i$ is the computational time overhead function for constructing $A_i$ from $A$.
+Therefore, we have inequalities:
+\[
+\tau_1(t) \ge S_{f_1}(\epsilon_1), \quad \tau_2(t) \ge S_{f_2}(\epsilon_2), \quad \ldots\quad
+\tau_m(t)\ge S_{f_m}(\epsilon_m)
+\]
+that imply $t\ge \min_{\epsilon_1 + \ldots + \epsilon_m = \epsilon}\max\{\tau^{-1}_1(S_{f_1}(\epsilon_1)), \ldots, \tau^{-1}_m(S_{f_m}(\epsilon_m))\}$, i.e. such reductions will prove the following security profile $S_g$ of $g$:
+\begin{equation}\label{eq:lower}
+S_g(\epsilon) = \min_{\epsilon_1 + \ldots + \epsilon_m = \epsilon}\max\{\tau^{-1}_1(S_{f_1}(\epsilon_1)), \ldots, \tau^{-1}_m(S_{f_m}(\epsilon_m))\}
+\end{equation}
+The minimum is necessary because we have to consider the worst distribution of $\epsilon_1,\ldots, \epsilon_m$ because the only fact we know about $\epsilon_i$ is that they are non-negative and their sum is $\epsilon$.
+Equation (\ref{eq:lower}) implies a simpler but weaker profile $S'_g$:
+\[
+S'_g(\epsilon) = S_\mathsf{min}(\epsilon /m) =
+ \min\{\tau^{-1}_1(S_{f_1}(\epsilon/m)), \ldots, \tau^{-1}_m(S_{f_m}(\epsilon/m))\}\enspace.
+\]
+Moreover, if $\tau(t)=\max\{\tau_1(t), \ldots, \tau_m(t)\}$ and $S_\mathsf{min}(\epsilon)= \min\{S_{f_1}(\epsilon), \ldots, S_{f_m}(\epsilon)\}$ then we have even simpler security profile $S''_g$ for $g$ defined by:
+\begin{equation}\label{eq:losebound}
+S''_g(\epsilon) = \tau^{-1}(S_\mathsf{min}(\epsilon/m))\enspace.
+\end{equation}
+In the security reductions of this paper, the time overhead function $\tau$ is linear, i.e. $\tau(t) = \alpha t + \beta$, where $\alpha$ and $\beta$ are reduction-specific constants.
+
+\subsection{Signature Schemes}
+
+A \emph{signature scheme} is a triple $(\keygen, \sig, \sigver)$ of algorithms such that:
+\begin{itemize}
+\item $(\pubkey, \prikey) \gets \keygen$ generates a public key $\pubkey$ and a private key $\prikey$;
+\item $\sigma \gets \sig(\prikey, m)$ generates a signature on a message $m$;
+\item $b \gets \sigver (\pubkey, m, \sigma)$ verifies a signature on a message (accepts if $b = 1$);
+\end{itemize}
+so that for every message $m$ the following \emph{verification identity} holds:
+\[
+\mathsf{Pr}[(\pubkey, \prikey) \gets \keygen \colon\; \sigver(\pubkey, m, \sig(\prikey, m)) = 1] = 1 \enspace.
+\]
+
+\begin{definition}[EF-CMA security]
+A signature scheme $(\keygen, \sig, \sigver)$ is $S$-secure against existential forgeries under adaptive chosen message attacks ($S$-secure EF-CMA) if it has $S$ as a security profile in the attack scenario:
+\begin{enumerate}
+\item $(\pubkey, \prikey) \gets \keygen$
+\item $(m,\sigma)\gets A^{\mathsf{S}(\prikey;)}(\pubkey)$
+\item The attack is successful iff $\mathsf{V}(\pubkey, m, \sigma)=1$
+and $A$ never queries $\mathsf{S}(\prikey;m)$
+\end{enumerate}
+\end{definition}
+
+\subsection{One-Way Functions}
+
+Let $f\colon X \rightarrow Y$ be any function from a range $X$ to a domain $Y$.
+
+\begin{definition}[one-wayness]
+A function $f$ is $S$-secure one-way if it has $S$ as a security profile in the attack scenario:
+\begin{enumerate}
+\item $x\gets X$, i.e. $x$ is chosen uniformly at random from the domain $X$
+\item $x'\gets A(f(x))$
+\item The attack is successful if $f(x')=f(x)$.
+\end{enumerate}
+\end{definition}
+
+\subsection{Hash Functions}
+
+\noindent A \emph{hash function family} is a pair $(\hfgen,\hfunc)$ where:
+\begin{itemize}
+\item $\hfgen$ is a probabilistic algorithm that chooses a parameter $\param$
+\item $\hfunc$ is a deterministic algorithm such that for every value of $\param$, the function $H=\hfunc(\param; \cdot)$ is of type $\bits{\ast} \to \bits{k}$.
+\end{itemize}
+
+\begin{definition}[Collision-resistance]
+A hash function family $(\hfgen,\hfunc)$ is $S$-secure collision-resistant if it has $S$ as a security profile in the attack scenario:
+\begin{enumerate}
+\item $\param \gets \hfgen$
+\item $(m,m')\gets A(\param)$
+\item The attack is successful iff $m\neq m'$ and $\hfunc(\param;m)=\hfunc(\param;m')$.
+\end{enumerate}
+\end{definition}
+In the following, we assume that the sampling $\param \gets \hfgen$ has been done before any attack scenario, and we often say that the function $H=\hfunc(\param; \cdot)$ itself is collision-resistant regardless of the fact that no fixed function can formally be collision-resistant.
+
+\begin{definition}[$(k,\ell)$-One-Wayness]
+A function $H\colon \{0,1\}^\ast\rightarrow\{0,1\}^k$
+is $S$-secure $(k,\ell)-$\emph{one-way} if it has $S$ as a security profile in the attack scenario:
+\begin{enumerate}
+\item $(h,a)\gets A_1$
+\item $x \gets \{0,1\}^\ell$
+\item $x'\gets A_2(a;H(h,x))$
+\item The attack is successful iff $h\in\{0,1\}^k$, $x'\in\{0,1\}^\ell$ and $H(h,x)=H(h,x')$.
+\end{enumerate}
+\end{definition}
+Equivalently, $H$ is $S$-secure $(k,\ell)$-one-way iff the function $f_h$ defined by $f_h(x)=H(h,x)$ is $S$-secure one-way for every $h\in\{0,1\}^k$.
+
+\subsection{Commitment Schemes}
+
+A \emph{commitment scheme} is a triple $(\setup, \commit, \open)$ of probabilistic algorithms such that:
+\begin{itemize}
+\item $\param\gets\setup$ is the setup algorithm that fixes the parameters of the scheme
+\item $(c,d)\gets \commit(\param; m)$ computes commitment $c$ and
+decommitment string $d$ of a message $m$
+\item $m\gets \open(\param; c, d)$ opens the commitment
+\end{itemize}
+so that for every $m$, the following correctness identity holds:
+\[
+m=\open(\param; \commit(\param; m))\enspace.
+\]
+We denote by $\commitc(\param,m)$ the function that computes $(c,d)\gets \commit(\param; m)$ and returns $c$.
+We will often omit the parameter $\param$ and use shorthand notations $\commit(m)$, $\commitc(m)$ and $\open(c,d)$ instead of $\commit(\param; m)$,
+$\commitc(\param; m)$ and $\open(\param; c, d)$, respectively.
+\medskip
+
+\begin{definition}[Trivial Commitment Scheme]
+In the trivial commitment scheme $(\setup,\commit,\open)$ the functions are defined as follows:
+\begin{itemize}
+\item $\setup$ always returns $\bot$
+\item $\commit(m)=(m,\bot)$ is the identity function
+\item $\open (c,d) = c$ just returns the first argument
+\end{itemize}
+\end{definition}
+
+
+\noindent In terms of security, commitment schemes are required to be \emph{binding} and \emph{hiding}. Binding property means that once the commitment $c$ is fixed, it is not possible (or is very hard) to open it in two different ways. Hiding property means that the commitment $c$ must not contains efficiently extractable information about the committed message.
+
+\subsubsection{Binding}
+
+\begin{definition}[Binding]
+A commitment scheme $(\setup, \commit, \open)$ is $S$-secure computationally binding if it has $S$ as a security profile in the attack scenario:
+\begin{enumerate}
+\item $\param\gets\setup$
+\item $c,d,d'\gets A(\param)$
+\item The attack is successful if $\open(\param; c, d)\neq\open(\param; c, d')$.
+\end{enumerate}
+\end{definition}
+This property is called \emph{computational binding} because it protects against adversaries with limited computational power. There exist commitment schemes that are \emph{perfectly binding}, which means that opening a commitment in two different ways is impossible by definition. For example, the trivial commitment is perfectly binding, however it is "perfectly non-hiding" because the commitment of $m$ is $m$ itself.
+
+\subsubsection{Hiding}
+
+\begin{definition}[Perfect hiding]
+A commitment scheme $(\setup, \commit, \open)$ is said to be perfectly hiding if for every $\param$ and for every two messages $m,m'$ the commitments $c\gets \commitc(\param; m)$ and $c'\gets \commitc(\param; m')$ have equal probability distributions as random variables (assuming that the two calls of $\commit$ use independent internal random strings).
+\end{definition}
+
+\begin{lemma}[Output independence]\label{le:outputindependence}
+If $(\setup, \commit, \open)$ is perfectly hiding commitment scheme, $m$ is chosen according to any probability distribution and $g$ be any deterministic function, then $m$ and $\commitc(g(m))$ are independent random variables.
+\end{lemma}
+\begin{proof}
+Let $\omega \gets \Omega$ be the internal randomness sampling of $\commitc$. We denote by $\commitc_\omega$ the deterministic version of $\commitc$, when the internal random string $\omega$ is fixed. Let $\mathcal{M}$ denote the sampling space of $m$. We assume that the sampling $\mu\gets \mathcal{M}$ happens independently of $\omega \gets \Omega$ and hence, the total sampling space is a direct product space with sampling space $\mathcal{M}\times \Omega$ and $\prob[\mu,\omega]=\prob[\mu]\cdot \prob[\omega]$ for any values $\mu, \omega$.
+
+Let $m=M(\mu,\omega)$ with $\mu\gets \mathcal{M}$ and $\omega\gets \Omega$, i.e. $M$ is the random variable corresponding to $m$. Let $C$ be the corresponding random variable of $c$, i.e. $c=C(\mu,\omega)=\commitc_\omega(g(M(\mu,\omega)))$. Note also that $M(\mu,\omega)$ does not depend on $\omega$.
+
+We have to show that $\prob[M=m,C=c] = \prob[M=m]\cdot \prob[C=c]$ in this probability space for any possible values $m,c$ of the message and the commitment, respectively.
+\begin{eqnarray*}
+\prob[M=m,C=c] &=& \sum_{\mu,\omega}\prob[\mu,\omega]\cdot [M(\mu,\omega)=m]\cdot [C(\mu,\omega)=c]\\
+&=& \sum_{\mu,\omega}\prob[\mu]\cdot\prob[\omega]\cdot [M(\mu,\omega)=m]\cdot [C(\mu,\omega)=c]\\
+&=& \sum_{\mu}\prob[\mu]\cdot[M(\mu,\omega)=m]\left(\sum_{\omega}\cdot\prob[\omega]\cdot [C(\mu,\omega)=c]\right)\\
+&=& \sum_{\mu}\prob[\mu]\cdot[M(\mu,\omega)=m]\cdot
+\prob[\commitc(g(M(\mu,\omega)))=c]\\
+&=& \prob[\commit_\omega(g(M(\mu,\omega)))=c]\cdot \sum_{\mu}\prob[\mu]\cdot[g(M(\mu,\omega))=m]\\
+&=& \prob[\commitc_\omega(g(M(\mu,\omega)))=c]\cdot \prob[M=m]
+\end{eqnarray*}
+because $p = \prob[\commitc_\omega(g(M(\mu,\omega)))=c]$ does not depend neither on $\mu$ due to the perfect hiding property, nor on $\omega$. Moreover:
+\begin{eqnarray*}
+p &=& \prob[\commitc(g(M(\mu,\omega)))=c] \cdot \overbrace{\sum_{\mu'} \prob[\mu']}^{=1}\\
+&=& \sum_{\mu'} \prob[\mu']\cdot \prob[\commitc(g(M(\mu,\omega)))=c]\\
+&=& \sum_{\mu'} \prob[\mu']\cdot \prob[\commitc(g(M(\mu',\omega)))=c]\\
+&=& \sum_{\mu'} \prob[\mu']\cdot \sum_{\omega}\prob[\omega]\cdot [\commitc_\omega(g(M(\mu',\omega)))=c]\\
+&=& \sum_{\mu',\omega} \prob[\mu',\omega]\cdot [\commitc_\omega(g(M(\mu',\omega)))=c] = \prob[C=c]
+\end{eqnarray*}
+that proves the claim.
+\end{proof}
+
+\subsection{Perfectly Hiding Commitments and One-Wayness}
+
+Let $f$ be a one way function and $(\setup, \commit, \open)$ be a perfectly hiding commitment scheme. We will show, that $f$ remains hard to invert even if, in addition to the image $f(x)$, the adversary also know the commitment $\commitc(x)$. The following lemma shows that knowing $\commitc(x)$ does not help the adversary (much) to invert a one-way function.
+
+\begin{lemma}
+If $f$ is $S_f$-secure one-way and $(\setup, \commit, \open)$ is a perfectly hiding commitment scheme, then $f$ is $S'_f$-secure in the attacking scenario:
+\begin{enumerate}
+\item $x\gets X$
+\item $x'\gets A(f(x),\commitc(x))$
+\item The attack is successful if $f(x')=f(x)$.
+\end{enumerate}
+where $S'_f(\epsilon) = S_f(\epsilon) - t_\mathsf{sm} - t_\mathsf{com}$, where $t_\mathsf{sm}$ and $t_\mathsf{com}$ are the running times of the samplings $\cdot\gets X$ and $\cdot\gets \commitc(\cdot)$, respectively.\footnote{The overhead function is $\tau(t)=t + t_\mathsf{sm} + t_\mathsf{com}$ and its inverse $\tau^{-1}(t) = t - t_\mathsf{sm} - t_\mathsf{com}$.}
+\end{lemma}
+\begin{proof}
+Let $f$ be an $S$-secure one-way function and $A$ be a $t$-time adversary that with probability $\epsilon$ succeeds in the attacking scenario.
+Consider the following modified scenario with the same adversary:
+\begin{enumerate}
+\item $x\gets X$
+\item $x''\gets X$
+\item $x'\gets A(f(x),\commit(x''))$
+\item The attack is successful if $f(x')=f(x)$.
+\end{enumerate}
+From Lemma~\ref{le:outputindependence} it follows that in both input distributions $(f(x),\commit(x))$ and $(f(x),\commit(x''))$ the commitments are independent of $x$ and are equally distributed, and hence
+the joint distributions of $(f(x),\commit(x))$ and $(f(x),\commit(x''))$ are equal. It follows that the success probability of $A$ in the second scenario is also equal to $\epsilon$. Let $A'(y)$ be the adversary that, given $y=f(x)$ as input proceeds as follows:
+\begin{enumerate}
+\item $x''\gets X$
+\item $c\gets \commit(x'')$
+\item Return $A(y,c)$
+\end{enumerate}
+The adversary $A'$ inverts $f$ with probability $\epsilon$ and has running time $t+t_\mathsf{sm} + t_\mathsf{com}$. Therefore, $t+t_\mathsf{sm} + t_\mathsf{com}\ge S_f(\epsilon)$ and hence $t\ge S_f(\epsilon)- t_\mathsf{sm} - t_\mathsf{com}$.
+\end{proof}
+\medskip
+
+%\noindent This lemma can be straightforwardly generalized to the following lemma:
+%\begin{lemma}
+%A one-way function $f\colon X \rightarrow Y$ cannot be inverted much faster
+%if the adversary, in addition to $f(x)$, knows the value of another (efficiently sampleable) random variable $c$ that is independent of $x\gets X$.
+%\end{lemma}
+
+\section{Unicity Infrastructure}
+
+Unicity infrastructure is about maintaining identifiable digital assets called \emph{tokens}. For example, tokens can represent units of digital currency.
+
+\emph{Parties} can \emph{create (issue)} tokens, \emph{own} tokens, and \emph{transfer} tokens to each other, i.e. the ownership of tokens may change. In order to transfer a token, its owner makes a signed \emph{transaction} that redefines the ownership.
+
+We assume that transferred tokens can be sent using any channels and their storage does not require dedicated hardware devices. At the same time, the infrastructure has to guarantee some properties of the tokens such as \emph{unique ownership}, i.e. the owner of a token should not be able to transfer the token to two different parties (i.e. \emph{double-spend} the token) and once the token has been transferred, neither the previous owner nor any third parties should be able to do anything with the token -- transfer it or making it unusable to the next owner (i.e. \emph{blocking} the token).
+
+As nothing prevents copying digital information, some additional components are needed in the infrastructure to guarantee the desired properties of tokens. Therefore, Unicity infrastructure includes \emph{Unicity service} -- an online functionality that all parties can communicate with and certify
+
+
+In this section, we assume that $(\keygen, \sig, \sigver)$ is a signature scheme and $H$ is a hash function.
+
+\subsection{Unicity Service}
+
+We first model the Unicity service as an ideal functionality, and later discuss how to implement such a service in a secure and efficient way.
+
+\emph{Unicity service} $\unisrv$ is modeled as a state machine with state $R$, which is a key-value store (dictionary), where both keys and values are of type $\bits{|k|}$. Initially, $R = \emptyset$. We will write $R[k] = \bot$ if there are no pairs $(k, v)$ stored in $R$.
+
+Every input request $Q$ is a tuple $(\pubkey, \sthash, \txhash, \sigma)$, where:
+\begin{itemize}
+\item $\pubkey$ of type $\bits{p}$ is a public key (public key of the current owner of a token, i.e. the owner before the transaction with the hash $\txhash$ is executed),
+\item $\sthash$ of type $\bits{k}$ is a state hash (hash of the state of the token before the transaction is executed),
+\item $\txhash$ of type $\bits{k}$ is a transaction data hash (defined later),
+\item $\sigma$ of type $\bits{s}$ is a digital signature of the transaction.
+\end{itemize}
+
+The request $Q=(\pubkey,\sthash,\txhash,\sigma)$ is processed by $\unisrv$ with the state $R$ as follows:
+\begin{enumerate}
+\item If $R[H(\pubkey, \sthash)] = \bot$ and $\sigver(\pubkey, H(\sthash, \txhash), \sigma) = 1$ then
+\[
+R \gets R \cup \{(H(\pubkey, \sthash), \txhash)\} \enspace,
+\]
+i.e. the new value of $R$ is defined by setting $R[H(\pubkey, \sthash)] \gets \txhash$ and leaving the rest of the contents of $R$ unchanged.
+\item A proof $\pinc$ of the statement $R[H(\pubkey, \sthash)] = v$ (inclusion proof) is returned.
+\end{enumerate}
+
+It is easy to see that if $R_0 = \emptyset$ is the initial state, $Q_1, Q_2, \ldots, Q_n$ is any sequence of queries, and $R_i$ is the state after the request $Q_i$ then:
+\begin{itemize}
+\item $R_0 \subseteq R_1 \subseteq \ldots \subseteq R_n$, i.e. the elements are never removed.
+\item The state $R_n$ is a \emph{partial function}, i.e.
+$\{(k, v), (k, v')\} \subseteq R$ implies $v = v'$.
+\end{itemize}
+
+We say that a key $k$ is \emph{blocked} if $R[k] \neq \bot$.
+
+\subsection{Verification Function}
+
+We assume that the inclusion proofs $\pinc$ can be verified by any party using a verification function $\univer$ so that:
+\begin{itemize}
+\item If $\univer(k, v; \pinc) = 1$ then $R[k] = v$ in the current state $R$ of $\unisrv$. Hence, as $R$ is a partial function, for every $k, v, v', \pinc, \pinc'$, the following implication holds:
+\begin{equation}\label{eq:eqtx}
+\univer(k, v; \pinc) = \univer(k, v'; \pinc') = 1 \quad \Rightarrow \quad v =v' \enspace.
+\end{equation}
+\item If $R[H(\pubkey, \sthash)] = \txhash$ after a request $\pinc \gets \unisrv(\pubkey, \sthash, \txhash, \sigma)$ to the Unicity service, then $\univer(H(\pubkey, \sthash), \txhash, \pinc) = 1$.
+\end{itemize}
+
+\subsection{Transactions with a Token}
+
+Every token has a state hash $\sthash$ and an owner $A$ with a public key $\pubkey$. We will call the pair $(\pubkey, \sthash)$ a \emph{state} of the token.
+Every (unsigned) transaction with the token is a pair
+$T = (\sthash, D)$, where:
+\begin{enumerate}
+\item $\sthash$ is the state hash before executing the transaction,
+\item $D$ contains the following fields:
+\begin{itemize}
+\item $\pubkey'$ -- the public key of the next owner
+\item $x$ -- a uniformly chosen random string $x\gets\{0,1\}^\ell$
+\item $\auxd$ -- other data of the transaction
+\end{itemize}
+\end{enumerate}
+\noindent\textbf{Certifying a transaction} $T = (\sthash, D)$ involves the following steps:
+\begin{enumerate}
+\item $(\txhash,d) \gets \commit(H(D))$ is computed using a perfectly hiding commitment scheme $(\setup,\commit,\open)$.
+The commitment $\txhash$ is called the \emph{transaction data hash}.
+\item A hash value $h_T = H(\sthash, \txhash)$ is computed.
+\item A digital signature $\sigma$ on $h_T$ is created with the private counterpart of $\pubkey$, i.e. $\mathsf{V}(\pubkey, h_T, \sigma) = 1$.
+%\item A \emph{signed transaction} $(T,\sigma,d)$ is formed.
+\item Create a query $Q\gets (\pubkey,\sthash,\txhash,\sigma)$
+\item Call $\unisrv$ to obtain $\pi\gets \unisrv(Q)$
+\item Form the certified transaction $(T,\sigma,\txhash,d,\pi)$.
+\end{enumerate}
+
+\noindent\textbf{Verifying a certified transaction} A certified transaction $(T,\sigma,\txhash,d,\pi)$ is verified in the state $(\pubkey,h)$ by the following algorithm:\medskip
+
+\noindent $\certver(T,\sigma,\txhash,d,\pi;\pubkey,h)$:
+If at least one of the following checks fail, return 0, otherwise return 1:
+\begin{enumerate}
+\item $T.\sthash=h$
+\item $\open(\txhash,d)=H(T.D)$
+\item $\sigver(\pubkey, H(\sthash,\txhash),\sigma)=1$
+\item $\univer(H(\pubkey,T.\sthash),\txhash,\pi)=1$
+\end{enumerate}
+
+\begin{definition}[Certification in a state]\label{de:certstate}
+A tuple $(T,\sigma,\txhash,d,\pi)$ is said to be \emph{certified in state} $(\pubkey,h)$ iff $\certver(T,\sigma,\txhash,d,\pi;\pubkey,h)=1$.
+\end{definition}
+
+
+\subsection{Mint Transaction}
+
+Mint transaction is the first transaction with every token. Mint transaction assigns an unique \emph{Token Identifier} $\mathsf{id}$ and some more application-specific data fields, like a \emph{Mint Justification}, packed into the auxiliary data $\auxd$.
+
+A certified mint transaction is $(T_0, \sigma_0, \pi_0)$, where $T_0 = (\sthash, D_\mathsf{mint})$ and $D_\mathsf{mint}$ contain the following fields:
+\begin{itemize}
+    \item $\pubkey'$ -- the public key of the first owner, not masked
+    \item $\mathsf{id}$ -- token identifier
+% \item $x$ -- a uniformly chosen random string $x\gets\{0,1\}^\ell$
+    \item $\auxd$ -- other data of the transaction
+\end{itemize}
+
+\noindent Mint transaction is signed by a fixed, public keypair $(\pubkey_\mathsf{mint}, \prikey_\mathsf{mint})$. This ensures the uniqueness of every token identifier. $\mathsf{MINT\_SUFFIX}$ is a fixed domain separator.\medskip
+
+\noindent\textbf{Certifying a mint transaction} $T = (\sthash, D_\mathsf{mint})$ involves the following steps:
+\begin{enumerate}
+    \item $\sthash \gets H(\mathsf{id}, \mathsf{MINT\_SUFFIX})$
+	\item $\txhash \gets H(D_\mathsf{mint})$ is computed.
+	\item A hash value $h_T = H(\sthash, \txhash)$ is computed.
+	\item A digital signature $\sigma$ on $h_T$ is created with the (publicly known, fixed) private key $\prikey_\mathsf{mint}$.
+	\item Create a request $Q\gets (\pubkey_\mathsf{mint},\sthash,\txhash,\sigma)$
+	\item Call $\unisrv$ to obtain $\pi\gets \unisrv(Q)$
+	\item Form the certified mint transaction $(T,\sigma,\pi)$.
+\end{enumerate}
+
+\noindent\textbf{Verifying a certified mint transaction} $(T,\sigma,\pi)$ (with $T=(\sthash, D_\mathsf{mint})$) in state $(\pubkey,h)$ involves the following checks:
+\begin{enumerate}
+	\item $\sthash=h$
+	\item $\txhash = H(D_\mathsf{mint})$
+	\item $\sigver(\pubkey_\mathsf{mint}, H(\sthash,\txhash),\sigma)=1$
+	\item $\univer(H(\pubkey_\mathsf{mint},\sthash),\txhash,\pi)=1$
+\end{enumerate}
+
+Application specific checks follow, e.g., validate the mint authorization based on enclosed mint justification.
+
+\subsection{Token Ledger}
+
+A \emph{token ledger} is a sequence
+\[
+(T_0, \sigma_0, \pi_0; h^1_\mathsf{st}), (T_1, \sigma_1,\txhash^1,d_1,\pi_1; h^2_\mathsf{st}), \ldots, (T_n, \sigma_n, \txhash^n, d_n,\pi_n; h^{n+1}_\mathsf{st})
+\]
+where $(T_0, \sigma_0, \pi_0)$ is a certified mint transaction and for every index $i=1,\ldots, n$:
+\begin{enumerate}
+\item $(T_{i}, \sigma_{i}, \txhash^i,d_i, \pi_{i})$ is a certified transaction in $(T_{i-1}.D.\pubkey', h^{i-1}_\mathsf{st})$
+\item $h^{i}_\mathsf{st}=H(h^{i-1}_\mathsf{st},x_{i-1})$ where $x_{i-1} =T_{i-1}.D.x$.
+\end{enumerate}
+
+\section{Security}
+Consider a token with the state $S = (\pubkey, \sthash)$. The transfer protocol assures the following properties:
+\begin{itemize}
+\item \emph{No blocking}:
+Only the owner of the private key of $\pubkey$ can block the state $S = (\pubkey, \sthash)$ if it was not blocked before.
+\item \emph{No double-spending}:
+Only one certified transaction can be created in the state $S$.
+\end{itemize}
+In this section, we present security proofs for both the no blocking and the no double-spending properties. Security against blocking does not depend on the choice of the commitment scheme and security against double spending assumes computational binding of the commitment scheme.
+
+Therefore, both proofs are also valid if the commitment scheme is trivial (i.e. $\txhash = H(D)=H(\pubkey',x,\auxd)$) because the trivial commitment scheme is perfectly (and hence also computationally) binding. Later when we prove the privacy properties, we have to assume that the commitment scheme is perfectly hiding.
+
+
+
+\subsection{Security against Blocking}
+
+A blocking adversary $A$ uses two oracles:
+\begin{enumerate}
+\item $\mathsf{US}$ -- the Unicity service
+\item $\mathsf{TS}(\prikey,\cdot)$ -- transaction signer that, given as input a transaction $(h,D)$ returns $(\sigma, \txhash, d)$, where
+$(\txhash, d)\gets \commit(H(D))$ and
+$\sigma \gets \mathsf{S}(\prikey,H(h,\txhash))$
+\end{enumerate}
+\textbf{Blocking scenario} involves the following steps:
+\begin{enumerate}
+\item $(\pubkey,\prikey)\gets \mathsf{G}$, i.e. a keypair is generated
+\item $h_\mathsf{st}\gets A^{\mathsf{US},\mathsf{TS}(\prikey,\cdot)}(\pubkey)$, i.e. $A$ outputs a hash value
+\item $A$ is successful if:
+$R[H(\pubkey,h_\mathsf{st})]\neq\bot$ after the scenario
+and no queries of the form $(\sigma,\txhash,d)\gets\mathsf{TS}(\prikey;h_\mathsf{st},D))$ were made.
+\end{enumerate}
+Note that if such a query was made, then the request $Q=(\pubkey,\sthash, \txhash,\sigma)$ to $\mathsf{US}$ will trivially ensure $R[H(\pubkey,h_\mathsf{st})]\neq\bot$, and hence this is excluded by the security condition. \medskip
+
+\begin{definition}[Blocking security]
+The Unicity service is said to be $S$-secure against blocking if it has $S$ as a security profile in the blocking scenario.
+\end{definition}
+
+\noindent\textbf{Anaysis}: The adversary $A$ can be successful in the following cases:
+\begin{itemize}
+\item[a)] a request $Q=(\pubkey', h'_\mathsf{st}, h_\mathsf{tx}, \sigma)$ with $(\pubkey',h'_\mathsf{st})\neq (\pubkey,h_\mathsf{st})$ to $\mathsf{US}$ enforces $R[H(\pubkey, h_\mathsf{st})]\neq\bot$, which means that  $H(\pubkey,h_\mathsf{st})=H(\pubkey', h'_\mathsf{st})$ and hence, a collision for $H$ was found.
+\item[b)] a request $Q=(\pubkey, h_\mathsf{st}, h_\mathsf{tx}, \sigma)$ to $\mathsf{US}$ enforces $R[H(\pubkey, h_\mathsf{st})]\neq\bot$, which implies $\mathsf{V}(\pubkey, H(h_\mathsf{st},h_\mathsf{tx}), \sigma)=1$ from the description of $\mathsf{US}$. Then we have two possibilities:
+\begin{itemize}
+\item[b1)] a request $(\sigma',\txhash',d)\gets\mathsf{TS}(\prikey;\sthash',D)$ with $\sthash'\neq h_\mathsf{st}$ was made such that
+$H(\sthash',\txhash')=H(\sthash,\txhash)$, which means that a collision for $H$ was found.
+\item[b2)] if no requests $(\sigma',\txhash',d)\gets\mathsf{TS}(\prikey;\sthash',D)$ were made with $H(\sthash',\txhash')=H(\sthash,\txhash)$ then this means that $A$ was able to create the signature $\sigma$ without ``help'' from the $\mathsf{TS}(\prikey;\cdot)$ oracle, and hence $A$ was able to create an existential forgery against the signature scheme.
+\end{itemize}
+\end{itemize}
+
+\begin{theorem}
+If the signature scheme is $S$-secure EF-CMA and the hash function is $S$-secure collision-resistant, then the Unicity service is
+$S_\mathsf{block}$-secure against blocking, where $S_\mathsf{block}(\epsilon) =
+\frac{S(\epsilon/2)}{\max\{t_\mathsf{ver}, t_\mathsf{sig}\}+1} - \frac{t_\mathsf{gen}}{\max\{t_\mathsf{ver}, t_\mathsf{sig}\}+1}$
+and
+$t_\mathsf{gen}, t_\mathsf{sig}, t_\mathsf{ver}$ are the
+key generation time, signing time, and signature verification time, respectively.
+\end{theorem}
+\begin{proof}
+Let $A$ be a $t$-time blocking adversary that succeeds with probability $\epsilon$. We construct a collision-finder $A_\mathsf{coll}$ and an
+existential forger $A_\mathsf{ex}$ as follows:
+\begin{itemize}
+\item $A_\mathsf{coll}$ proceeds as follows:
+ \begin{enumerate}
+   \item $(\pubkey,\prikey)\gets \mathsf{G}$
+   \item Simulates $h_\mathsf{st}\gets A^{\mathsf{US},\mathsf{TS}(\prikey;\cdot)}(\pubkey)$ and records all the oracle queries.
+   \item If $A^{\mathsf{US},\mathsf{TS}(\prikey;\cdot)}(\pubkey)$ was successful and either the case a) or b1) occurs, $A_\mathsf{coll}$ outputs the collision that is guaranteed in this case.
+ \end{enumerate}
+The oracles are simulated as follows:
+ \begin{itemize}
+   \item $\mathsf{US}$-queries: $A_\mathsf{coll}$ maintains its own version of $R$
+   \item $\mathsf{TS}(\prikey;\cdot)$-queries: $A_\mathsf{coll}$ uses the private key $\prikey$.
+\end{itemize}
+The computational time overhead function for the construction of $A_\mathsf{coll}$ is $\tau_\mathsf{coll}(t) = (\max\{t_\mathsf{ver}, t_\mathsf{sig}\}+1)\cdot t + t_\mathsf{gen}$, where
+$t_\mathsf{ver}$ is the signature verification time (for $\unisrv$ queries),
+$t_\mathsf{sig}$ is the signature creation time (for $\mathsf{TS}(\prikey;\cdot)$-queries) and $t_\mathsf{gen}$ is the key generation time.
+
+\item $A_\mathsf{ex}^{\mathsf{S(\prikey;\cdot)}}(\pubkey)$ proceeds as follows:
+ \begin{enumerate}
+  \item Simulates $h_\mathsf{st}\gets A^{\mathsf{US},\mathsf{TS}(\prikey;\cdot)}(\pubkey)$ and records all the oracle queries
+  \item If $A^{\mathsf{US},\mathsf{TS}(\prikey;\cdot)}(\pubkey)$ was successful and b2) occurs and $Q=(\pubkey, h_\mathsf{st}, h_\mathsf{tx}, \sigma)$ was the request that enforces $R[H(\pubkey, h_\mathsf{st})]\neq\bot$ then:
+  \begin{enumerate}
+    \item[3.] $m\gets H(h_\mathsf{st}, h_\mathsf{tx})$
+    \item[4.] Output $(m,\sigma)$.
+  \end{enumerate}
+ \end{enumerate}
+The oracles are simulated as follows:
+ \begin{itemize}
+  \item $\mathsf{US}$-queries are simulated so that $A_\mathsf{coll}$ maintains its own version of $R$
+  \item $\mathsf{TS}(\prikey;\cdot)$-queries are simulated by using calls to $\mathsf{S}(\prikey;\cdot)$.
+ \end{itemize}
+ As the request $Q$ was accepted by $\unisrv$, we have $\sigver(\pubkey,m,\sigma)=1$. Note that in the case b2) the request $\mathsf{S}(\prikey; m)$ was never made and hence, $A_\mathsf{ex}^{\mathsf{S(\prikey;\cdot)}}(\pubkey)$ is successful as an existential forger in the EF-CMA scenario. The computational time overhead function for the construction of $A_\mathsf{ex}$ is $\tau_\mathsf{ex}(t) = (t_\mathsf{ver}+1)\cdot t + t_\mathsf{hash}$, where
+$t_\mathsf{ver}$ is the signature verification time (for $\unisrv$ queries),
+$t_\mathsf{hash}$ is the hash computation time (for output).
+\end{itemize}
+If $A$ succeeds, then either $A_\mathsf{coll}$ or $A_\mathsf{ex}$ succeds and hence $\epsilon \le \epsilon_\mathsf{coll} + \epsilon_\mathsf{ex}$.
+Assuming that $t_\mathsf{hash}\le t_\mathsf{gen}$, the inequality
+$\tau_\mathsf{ex}(t)\le \tau_\mathsf{coll}(t)$ holds and hence by equation (\ref{eq:losebound})
+\[
+S_\mathsf{block}(\epsilon) = \tau^{-1}_\mathsf{coll}(S(\epsilon/2)) =
+\frac{S(\epsilon/2)}{\max\{t_\mathsf{ver}, t_\mathsf{sig}\}+1} - \frac{t_\mathsf{gen}}{\max\{t_\mathsf{ver}, t_\mathsf{sig}\}+1}
+\]
+is a security profile of the Unicity service against blocking.
+\end{proof}
+
+\subsection{Security against Double-Spending}
+
+A double-spending adversary uses $\unisrv$ as an oracle. \medskip
+
+\noindent\textbf{Double-spending scenario} involves the following steps:
+\begin{enumerate}
+\item $(T,\sigma,\txhash,d,\pinc),(T',\sigma',\txhash',d',\pinc'),(\pubkey,h)\gets A^\unisrv$
+\item The attack is successful iff $T\neq T'$ and
+\begin{equation}\label{eq:dscond}
+\certver(T,\sigma,\txhash,d,\pinc;\pubkey,h)=\certver(T',\sigma',\txhash',d',\pinc';\pubkey,h)=1
+\end{equation}
+\end{enumerate}
+
+\begin{definition}[Double-spending security]
+The Unicity service is said to be $S$-secure against double-spending if it has $S$ as a security profile in the double-spending scenario.
+\end{definition}
+
+\noindent\textbf{Anaysis}: If the adversary is successful, then
+from (\ref{eq:dscond}) and the definition of $\certver$ it follows that
+$T.\sthash = T'.\sthash=h$ and:
+\begin{eqnarray*}
+\univer(H(\pubkey, h), \txhash; \pinc) = \univer(H(\pubkey, h), \txhash'; \pinc') = 1\enspace,
+\end{eqnarray*}
+which implies $\txhash=\txhash'$ by equation~(\ref{eq:eqtx}).
+From Def.~\ref{de:certstate} it also follows that
+$\open(\txhash,d)=H(T.D)$ and $\open(\txhash,d')=\open(\txhash',d')=H(T'.D)$.
+From $(h,T.D)=(T.\sthash,T.D)=T\neq T'=(T'.\sthash,T'.D)=(h,T'.D)$ it follows that $T.D\neq T'.D$. Hence, we have two cases:
+\begin{itemize}
+\item[a)] $H(T.D)=H(T'.D)$, which
+means that a collision has been found for $H$
+\item[b)] $H(T.D)\neq H(T'.D)$, which implies $\open(\txhash,d)=H(T.D)\neq H(T'.D)=\open(\txhash,d')$ and hence, the commitment $\txhash$ has been opened in two different ways.
+\end{itemize}
+
+\begin{theorem}
+If $H$ is $S$-secure collision-resistant and the commitment scheme is $S$-secure computationally binding, then the Unicity service is $S_\mathsf{double}$-secure against double-spending, where
+$S_\mathsf{double}(\epsilon) = \frac{S(\epsilon/2)}{t_\mathsf{ver}+1}$
+and $t_\mathsf{ver}$ is the signature verification time.
+\end{theorem}
+\begin{proof}
+Let $A$ be a $t$-time double-spending adversary that succeeds with probability $\epsilon$. We construct a collision-finder $A_\mathsf{coll}$ for the hash function and a double-opening adversary $A_\mathsf{com}$ for the commitment scheme as follows:
+\begin{itemize}
+\item $A_\mathsf{coll}$ proceeds as follows:
+\begin{enumerate}
+\item Simulate $(T,\sigma,\txhash,d,\pinc),(T',\sigma',\txhash',d',\pinc'),(\pubkey,h)\gets A^\unisrv$ by maintaining its own version of $\unisrv$
+\item Output the pair $(T.D,T'.D)$
+\end{enumerate}
+The computational overhead function of $A_\mathsf{coll}$ is $\tau_\mathsf{coll}(t) = (t_\mathsf{ver}+1) \cdot t$, because simulating a $\unisrv$ query requires one signature verification and the number of calls is limited by the running time $t$ of $A$.
+\item $A_\mathsf{com}$ proceeds as follows:
+\begin{enumerate}
+\item Simulate $(T,\sigma,\txhash,d,\pinc),(T',\sigma',\txhash',d',\pinc'),(\pubkey,h)\gets A^\unisrv$ by maintaining its own version of $\unisrv$
+\item Output the triple $(\txhash,d,d')$
+\end{enumerate}
+The computational overhead function of $A_\mathsf{com}$ is the same as
+that of $A_\mathsf{coll}$, i.e. $\tau_\mathsf{com}(t)= \tau_\mathsf{coll}(t)=(t_\mathsf{ver}+1) \cdot t$.
+\end{itemize}
+ If $A$ succeeds, then in case a) the collision finder $A_\mathsf{coll}$ succeeds, and in case b) the double-opener $A_\mathsf{com}$ succeeds. Hence, $\epsilon \le \epsilon_\mathsf{coll} + \epsilon_\mathsf{com}$, where $\epsilon_\mathsf{coll}$ is the success probability of $A_\mathsf{coll}$ and
+$\epsilon_\mathsf{com}$ is the success probability of $A_\mathsf{com}$.
+Therefore, by equation (\ref{eq:losebound}), the function $S_\mathsf{double}$ defined by
+\[
+S_\mathsf{double}(\epsilon) = \tau^{-1}_\mathsf{coll}(S(\epsilon/2)) =
+\frac{S(\epsilon/2)}{t_\mathsf{ver}+1}
+\]
+is a security profile of the Unicity service against double-spending.
+\end{proof}
+
+\subsection{Insecure Modifications of the Unicity Service}
+
+\subsubsection{State Hash not Signed}
+
+Consider the following modification of $\mathsf{US}$ that given a request $Q=(\pubkey, h_\mathsf{st}, h_T, \sigma)$ proceeds as follows:
+\begin{enumerate}
+\item If $R[H(\pubkey, h_\mathsf{st})]=\bot$ and $\mathsf{V}(\pubkey, h_T, \sigma)=1$ then $R[H(\pubkey, h_\mathsf{st})]\gets h_T$
+\item Return a proof $\pi$ of the statement $R[H(\pubkey, h_\mathsf{st})]=h_T$
+\end{enumerate}
+Assume that a user $A$ owns a token in a state $(\pubkey,h_\mathsf{st})$
+and a malicious user $B$ that knows a signed (by $A$) transaction $(T,\sigma)$ with $T=(h', D')$. User $B$ may now lock $A$-s token (with the state $(\pubkey,h_\mathsf{st})$) by sending a request $Q=(\pubkey,h_\mathsf{st}, h_T, \sigma)$ to $\mathsf{US}$.
+Therefore, such a modification is insecure against blocking.
+
+\subsubsection{$R$ as a Set}
+
+Consider the following modification of $\mathsf{US}$ where $R$ is just a set such that given a request $Q=(\pubkey, \sthash, h_\mathsf{tx}, \sigma)$ proceeds as follows:
+\begin{enumerate}
+\item If $H(\pubkey, \sthash)\not\in R$ and $\mathsf{V}(\pubkey, H(\sthash, h_\mathsf{tx}), \sigma)=1$ then $R\gets R \cup \{H(\pubkey, \sthash)\}$
+\item Return an inclusion proof $\pinc$ of the statement $H(\pubkey, \sthash)\in R$
+\end{enumerate}
+Assume that a malicious $A$ owns a token in the state $(\pubkey,h_\mathsf{st})$ and prepares two transactions
+$T_1=(h_\mathsf{st},D_1), T_2=(h_\mathsf{st},D_2)$ that transfer the token to two different public keys $\pubkey_1$ and $\pubkey_2$. The user $A$ signs $T_1$ by computing $\sigma\gets \sig(\prikey, H(\sthash,H(D_1)))$ and sends a request $Q=(\pubkey,\sthash,H(D_1),\sigma)$ to $\mathsf{US}$.
+
+As $\sigver(\pubkey,H(\sthash,H(D_1)),\sigma)=1$, $\mathsf{US}$ assigns $R\gets R\cup\{H(\pubkey,\sthash)\}$ and returns the inclusion proof $\pinc$ of the statement $H(\pubkey,\sthash)\in R$.
+
+After that, $A$ signs $T_2$ by computing $\sigma'\gets \sig(\prikey, H(\sthash,H(D_2)))$ and composes a certified transaction $(T_2,\sigma',\pinc)$ that double-spends the token.
+
+\section{Privacy}
+
+Unicity service $\unisrv$ obtains information about the transactions $T=(\sthash,D)$ with tokens via the queries $Q=(\pubkey, \sthash, \txhash,\sigma)$. We want to ensure that $\unisrv$ does not learn too much about the contents and context of transactions, for example, which transaction belongs to which token.
+
+Assume that a token is currently in the state $(\pubkey,\sthash)$ and the next transaction with the token is $T=(\sthash, D)$, where $D=(\pubkey',x,\mathsf{aux})$. To certify $T$ the query
+$Q=(\pubkey,\sthash,\txhash,\sigma)$ is sent to $\unisrv$ where $\txhash=\commitc(H(D))$ and $\sigma = \sig(\prikey; H(\sthash,\txhash))$.
+Assume that $\unisrv$ stores the transaction $Q$.
+In the future, the next transaction $T'=(\sthash',D')$ will be executed with the same token and the query
+$Q'=(\pubkey',\sthash',\txhash',\sigma')$ with $\sthash'=H(\sthash,x)$ received by $\unisrv$.
+
+We do not want $\unisrv$ to be able to associate $Q$ and $Q'$ as two consecutive transactions with the same token. Such association is possible if $\unisrv$ somehow obtains the random $x$ included into the transaction $T$, because $\unisrv$ can then check that $H(\sthash,x)=\sthash'=f_{\sthash}(x)$. There are several ways how to find $x$:
+\begin{itemize}
+\item Invert the function $f_{\sthash}(\cdot)=H(\sthash,\cdot)$, i.e. find $x'$ such that $f_{\sthash}(x')=\sthash'$ and hope that $x'=x$. To prevent that, we may assume that the hash function $H$ is $(k,\ell)$-one-way.
+\item Find $x$ based on the commitment $\txhash=\commitc(D)$. To prevent that, we may assume that the commitment scheme is computationally binding.
+\item Combine both techniques, i.e. invert $f_{\sthash}(x)$ with additional information about $x$ obtained from $\txhash$. To prevent that, we assume that the commitment scheme in use is \emph{perfectly hiding}. We will give a proof later in this section under some reasonable assumptions.
+\end{itemize}
+Note that if $\ell$ is large, then $H(\sthash,x)$ with $x\gets \{0,1\}^\ell$ may give very little information about the previous state hash $\sthash$.
+For example, an extreme case is that if $\ell=k$ and the function $H(h,\cdot)\colon \{0,1\}^k\rightarrow \{0,1\}^k$ happens to be one-to-one for every $h$ (with most likely does never happen for practical hash functions) then in fact $H(\sthash,x)$ gives no information on $\sthash$  because the equation $H(h,x)=\sthash'$ can be (uniquely) solved for every state hash $h$ that $\unisrv$ has stored or memorized. In practice, there is no need to choose very large $\ell$ as practical security is possible if $\ell$ is much smaller than $k$.
+
+\subsection{Security against Association}
+
+Association adversary $A=(A_1,A_2)$ is two-stage. \medskip
+
+\noindent\textbf{Association scenario} involves the following steps:
+\begin{enumerate}
+\item $(\sthash, \pubkey', \auxd, a)\gets A_1$
+\item $x\gets \{0,1\}^\ell$
+\item $\sthash'\gets H(\sthash,x)$
+\item $\txhash\gets\commitc(H(\pubkey',x,\auxd)))$
+\item $x'\gets A_2(a; \sthash',\txhash)$
+\item The attack is successful iff $\sthash\in\{0,1\}^k$, $x'\in\{0,1\}^\ell$, and $H(\sthash,x')=\sthash'$
+\end{enumerate}
+
+\begin{definition}[Association security]
+The Unicity service is said to be $S$-secure against association if it has $S$ as a security profile in the association scenario.
+\end{definition}
+
+
+\begin{theorem}
+If the hash function is $S$-secure $(k,\ell)$-one-way and the commitment scheme is perfectly hiding, then the Unicity service is $S_\mathsf{assoc}$-secure against association, where $S_\mathsf{assoc}(\epsilon)= S(\epsilon) - t_\mathsf{sm} - t_\mathsf{hash} - t_\mathsf{com}$, where
+$t_\mathsf{sm}, t_\mathsf{hash}, t_\mathsf{com}$ are the random sampling time, hashing time, and the commitment computation time, respectively.
+\end{theorem}
+\begin{proof}
+Let $A=(A_1,A_2)$ be a $t$-time adversary that succeeds in the association scenario with probability $\epsilon$. Consider the following modified attack scenario:
+\begin{enumerate}
+\item $(\sthash, \pubkey', \auxd, a)\gets A_1$
+\item $x\gets \{0,1\}^\ell$
+\item $\sthash'\gets H(\sthash,x)$
+\item $x''\gets \{0,1\}^\ell$
+\item $\txhash'\gets\commitc(H(\pubkey',x'',\auxd)))$
+\item $x'\gets A_2(a; \sthash',\txhash')$
+\item The attack is successful iff $\sthash\in\{0,1\}^k$, $x'\in\{0,1\}^\ell$, and $H(\sthash,x')=\sthash'$
+\end{enumerate}
+%For any fixed value of $L=(\sthash, \pubkey', \auxd, a)$, due to the perfect hiding, the probability distributions of $\txhash$ and $\txhash'$ are equal and due to Lemma~\ref{le:outputindependence} (by taking $g(x)=H(\pubkey',x,\auxd))$), the random variables $\txhash$ and $\txhash'$ are both independent of $x$. This means that the arguments $(\sthash',\txhash)$ and $(\sthash',\txhash')$ of $A(a;\cdot)$ are equal
+%in both scenarios, and hence $A$ succeeds in the modified scenario with probability $\epsilon$. We construct an adversary $A'=(A'_1,A'_2)$ as follows:
+
+For any fixed value of $L=(\sthash, \pubkey', \auxd, a)$, due to perfect hiding, the commitments $\txhash=\commitc(H(\pubkey',x,\auxd))$ and $\txhash'=\commitc(H(\pubkey',x'',\auxd))$ have equal probability distributions. Moreover, by Lemma~\ref{le:outputindependence} (with $g(x)=H(\pubkey',x,\auxd)$), the random variable $x$ and $\txhash=\commitc(H(\pubkey',x,\auxd))$ are independent.
+
+Since $x''$ and $x$ are independent, the commitment $\txhash'=\commitc(H(\pubkey',x'',\auxd))$ is independent of both $x$ and $\sthash'=H(\sthash,x)$. Therefore, the joint distributions of $(\sthash',\txhash)$ and $(\sthash',\txhash')$ are equal, and hence $A$ succeeds in the modified scenario with probability $\epsilon$. We construct an adversary $A'=(A'_1,A'_2)$ as follows:
+\begin{itemize}
+\item $A'_1$ proceeds as follows:
+\begin{enumerate}
+\item $(\sthash, \pubkey', \auxd, a)\gets A_1$
+\item Return $(\sthash, a')$, where $a'=(\pubkey', \auxd, a)$
+\end{enumerate}
+\item $A'_2(a';y)$ with $a'=(\pubkey', \auxd, a)$ proceeds as follows:
+\begin{enumerate}
+\item $x''\gets \{0,1\}^\ell$
+\item $\txhash'\gets\commitc(H(\pubkey',x'',\auxd)))$
+\item $x'\gets A_2(a; y,\txhash')$
+\item Return $x'$
+\end{enumerate}
+\end{itemize}
+The computational time overhead function of $A'$ is $\tau(t) = t + t_\mathsf{sm} + t_\mathsf{hash} + t_\mathsf{com}$ and hence, by equation (\ref{eq:losebound}), the function $S_\mathsf{assoc}$ defined by
+\[
+S_\mathsf{assoc}(\epsilon) = \tau^{-1}(S(\epsilon)) = S(\epsilon) - t_\mathsf{sm} - t_\mathsf{hash} - t_\mathsf{com}
+\]
+is a security profile of the Unicity service against association.
+\end{proof}
+
+\subsection{Discussion}
+
+The security proofs against blocking and double spending are also valid in case when the commitment scheme is omitted from the construction and the transaction data hash is computed by $\txhash = H(\pubkey',x,\auxd)$.
+At the same time, there seem to be no obvious ways of proving that such a simplified scheme is secure against association.
+
+Still, it may be a plausible practical assumption that given $\sthash$ and the next state hash $\sthash'=H(\sthash,x)$ and $\txhash = H(\pubkey',x,\auxd)$ it is infeasible to find $x'$ so that $H(\sthash,x')=\sthash'$. At least for example, if $H$ is \textsf{SHA-256}, there seem to be no obvious ways how to do it if $x$ has sufficiently many random bits.
+
+\pagebreak
+\appendix
+\section{Detailed Transaction Sequence Diagram}
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{sequencediagram}
+            \newthread{S}{Sender}
+            \newinst[3]{R}{Recipient}
+            \newinst[2]{US}{Unicity Service}
+
+            % Recipient generates keys and parameters
+            \begin{call}{R}{$(\pubkey', \prikey') \gets \keygen$}{R}{}
+            \end{call}
+
+            % Recipient sends public key to sender
+            \begin{messcall}{R}{$\pubkey'$}{S}
+            \end{messcall}
+
+            % Sender creates transaction data
+            \postlevel
+            \postlevel
+            \postlevel
+            \begin{call}{S}{\shortstack[l]{
+                    $x \gets \{0,1\}^\ell$     \\
+                    $D = (\pubkey', x, \auxd)$ \\
+                    $T = (\sthash, D)$         \\
+                    $(\txhash, d) \gets \commit(H(D))$ \\
+                    $h_T = H(\sthash, \txhash)$ \\
+                    $\sigma \gets \sig(\prikey, h_T)$
+                }
+                }{S}{}
+            \end{call}
+
+            % Sender requests certification from Unicity Service
+            \begin{messcall}{S}{$Q = (\pubkey, \sthash, \txhash, \sigma)$}{US}
+                \postlevel
+                \begin{call}{US}{\shortstack[l]{
+                    $\sigver(\pubkey, h_T, \sigma) \stackrel{?}{=} 1$ \\
+                    $R[H(\pubkey, \sthash)] \stackrel{?}{=} \bot$ \\
+                    $R[H(\pubkey, \sthash)] \gets \txhash$
+                    }}{US}{}
+                \end{call}
+            \end{messcall}
+            \prelevel
+            \begin{messcall}{US}{$\pinc$}{S}
+            \end{messcall}
+
+            % Sender sends certified transaction to recipient
+            \begin{messcall}{S}{$(T, \sigma, \txhash, d, \pinc)$}{R}
+                \postlevel
+                \postlevel
+                \postlevel
+                \begin{call}{R}{\shortstack[l]{
+                    $T.\sthash \stackrel{?}{=} \sthash$ \\
+                    $\open(\txhash, d) \stackrel{?}{=} H(T.D)$ \\
+                    $\sigver(\pubkey, H(\sthash, \txhash), \sigma) \stackrel{?}{=} 1$ \\
+                    $\univer(H(\pubkey, T.\sthash), \txhash, \pinc) \stackrel{?}{=} 1$ \\
+                    Accept transaction if all checks pass
+                    }}{R}{}
+                \end{call}
+            \end{messcall}
+        \end{sequencediagram}
+        \caption{Detailed Unicity transaction flow.}\label{fi:unicity-transaction-full}
+    \end{center}
+\end{figure}
+
+\end{document}
