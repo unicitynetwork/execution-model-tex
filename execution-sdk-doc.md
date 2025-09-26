@@ -84,9 +84,6 @@ interface TransactionData {
   /** Token type identifier (only for mint transactions) */
   tokenType?: string;
 
-  /** Immutable token data (only for mint transactions) */
-  tokenData?: string; // hex-encoded bytes
-
   /** Mint justification/reason (only for mint transactions) */
   mintReason?: string;
 }

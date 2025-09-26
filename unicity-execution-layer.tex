@@ -91,7 +91,7 @@ Unicity takes a fundamentally different approach by recognizing that most blockc
 
 Figure~\ref{fi:unicity} illustrates the Unicity transaction flow. Rather than broadcasting full transaction data to all network participants, Unicity maintains only a cryptographic commitment to spent asset states.
 
-Unicity as a transacting framework provides three essential guarantees: (1) \emph{unique spending}—a digital asset can be spent no more than once, (2) \emph{non-blocking}—only the legitimate owner of an asset can mark this asset as spent, and (3) \emph{privacy}—transaction details remain confidential between participants, including all subsequent owners of a token and also the Unicity Service.
+Unicity as a transacting framework provides three essential guarantees: (1) \emph{unique spending}—a digital asset can be spent no more than once, (2) \emph{non-blocking}—only the legitimate owner of an asset can mark this asset as spent, and (3) \emph{privacy}—transaction details remain confidential between participants, hidden from the Unicity Service.
 
 By decoupling transaction execution from consensus, Unicity enables new use cases previously impractical on traditional blockchains. Transactions can occur entirely off-chain, requiring no network connectivity at the time of execution. Multiple parties can transact directly using any communication channel, from internet protocols to physical media exchange. The resulting system scales linearly with the number of participants rather than facing the quadratic complexity growth of traditional blockchain networks.
 
@@ -564,7 +564,7 @@ Mint transaction is the first transaction with every token. Mint transaction ass
 
 A certified mint transaction is $(T_0, \sigma_0, \pi_0)$, where $T_0 = (\sthash, D_\mathsf{mint})$ and $D_\mathsf{mint}$ contains the following fields:
 \begin{itemize}
-    \item $\pubkey'$: the public key of the first owner, not masked;
+    \item $\pubkey'$: the public key of the first owner;
     \item $\mathsf{id}$: the token identifier;
 % \item $x$: a uniformly chosen random string $x\gets\{0,1\}^\ell$;
     \item $\auxd$: other data of the transaction.
