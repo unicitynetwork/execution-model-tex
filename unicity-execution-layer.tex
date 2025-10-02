@@ -2,6 +2,7 @@
 \usepackage{graphicx} % Required for inserting images
 \usepackage{pgf-umlsd} % sequence diagram
 \usepackage{amssymb}
+\usepackage{amsmath} % xleftarrow
 \usepackage{enumitem}
 \setlist[itemize]{noitemsep} % compact itemize
 % \setlist[enumerate]{noitemsep}
@@ -899,7 +900,314 @@ S_\mathsf{assoc}(\epsilon) = \tau^{-1}(S(\epsilon)) = S(\epsilon) - t_\mathsf{sm
 is a security profile of the Unicity service against association.
 \end{proof}
 
-\subsection{Discussion}
+\subsection{Key Generation}
+
+In the previous sections, there is an assumption that the recipient generates a fresh keypair for every transaction. This may be impractical in some applications, especially where the recipient's secure storage is limited. We present two solutions that allow for the generation of unlinkable public keys while maintaining only a single persistent private key.
+
+As a requirement, we avoid the persistent state on the client side that must be retained between transactions.
+
+Unlike the rest of the paper which is not signature scheme specific, we are assuming the ECDSA signature scheme in the following subsections, and using the ECDSA, DH specific notation.
+
+\subsubsection{Interactive Protocol}
+
+The recipient holds a persistent keypair $(d, P)$ where $P = d \cdot G$ with generator $G$ and order $n$. For each transaction, the recipient generates an ephemeral blinding factor $r \gets \mathbb{Z}_n$ and derives a transaction-specific public key $P' = (d + r) \cdot G$. The protocol is shown in Figure~\ref{fig:protocol1}.
+
+
+\begin{figure}[!htb]
+\centering
+\fbox{
+\begin{minipage}{0.9\textwidth}
+
+\underline{Setup:} Recipient holds persistent keypair $(d, P)$ where $P = d \cdot G$
+
+\vspace{3mm}
+\begin{tabular}{lcl}
+\textbf{Sender} & & \textbf{Recipient}\\
+\hline
+\\[-2mm]
+  & &$r \stackrel{\$}{\gets} \mathbb{Z}_n$  \\
+  & & $P_{tx} \gets (d + r) \cdot G$  \\
+  & & $R \gets r \cdot G$  \\
+  & $\xleftarrow{\hspace{1cm} (P_{tx}, R) \hspace{1cm}}$ & \\
+$\mathsf{tx} \gets \{P_{tx}, R, \ldots\}$  & &  \\
+  & $\xrightarrow{\hspace{1.5cm} \mathsf{tx} \hspace{1.5cm}}$ & \\
+  & & $r' \gets \mathcal{H}(d \,||\, R)$ \\
+  & & $d_{tx} \gets d + r' \bmod n$ \\
+  & & $\sigma \gets \mathsf{Sign}(d_{tx}; \mathsf{tx}_{next})$ \\
+\end{tabular}
+\end{minipage}
+}
+\caption{Interactive protocol for generating unlinkable ECDSA public keys.}
+\label{fig:protocol1}
+\end{figure}
+
+The recipient maintains only the persistent secret $d$ and derives ephemeral signing keys deterministically from metadata $R$, included in the auxiliary data $\auxd$ of the transaction. When spending the token, the recipient reconstructs the blinding factor $r' = H(d \,||\, R)$ and derives the private key $d' = d + r' \bmod n$ corresponding to $P'$.
+
+\subsubsection{Non-Interactive Protocol}
+
+For applications requiring persistent public keys as ``addresses'', or non-interactive operation, the parties can create the blinded public key using Diffie-Hellman key exchange. The recipient publishes a persistent public key $P = d \cdot G$. The protocol is shown in Figure~\ref{fig:protocol2}.
+
+\begin{figure}[!htb]
+\centering
+\fbox{
+\begin{minipage}{0.9\textwidth}
+
+\underline{Setup:} Recipient publishes persistent public key $P = d \cdot G$
+
+\vspace{3mm}
+\begin{tabular}{lcl}
+\textbf{Sender} & & \textbf{Recipient} \\
+\hline
+\\[-2mm]
+$r \stackrel{\$}{\leftarrow} \mathbb{Z}_n$ & & \\
+$R \leftarrow r \cdot G$ & & \\
+$S \leftarrow r \cdot P$ & & \\
+$m \leftarrow \mathcal{H}(S)$ & & \\
+$P_{tx} \leftarrow P + m \cdot G$ & & \\
+$\mathsf{tx} \leftarrow \{P_{tx}, R, \ldots\}$ & & \\
+& $\xrightarrow{\hspace{1.5cm} \mathsf{tx} \hspace{1.5cm}}$ & \\[3mm]
+& & $S \leftarrow d \cdot R$ \\
+& & $m \leftarrow \mathcal{H}(S)$ \\
+& & $d_{tx} \leftarrow d + m \bmod n$ \\
+& & $\sigma \leftarrow \mathsf{Sign}_{d_{tx}}(\mathsf{tx}_{next})$ \\
+\end{tabular}
+\end{minipage}
+}
+\caption{Non-interactive protocol using Diffie-Hellman key exchange to blind addresses. The recipient can derive signing keys for any transaction without prior interaction. We assume honest sender.}
+\label{fig:protocol2}
+\end{figure}
+
+The sender generates an ephemeral keypair $(r, R = r \cdot G)$ and computes a Diffie-Hellman shared secret $S = r \cdot P$. The blinding mask $m = H(S)$ is used to compute the blinded public key $P' = P + m \cdot G$. The ephemeral public key $R$ is included in $\auxd$. Upon receiving the transaction, the recipient computes the same shared secret $S = d \cdot R$ and derives $d' = d + m \bmod n$.
+
+This construction is insecure because the sender can choose a predictable $r$ or leak it, thereby compromising the transaction unlinkability.
+
+\begin{figure}[ht]
+\centering
+\fbox{
+\begin{minipage}{0.95\textwidth}
+
+\underline{Setup:}
+Recipient has persistent keypair $(d, P = d \cdot G)$ and publishes $P$
+
+\vspace{3mm}
+\begin{tabular}{lcl}
+\textbf{Sender} & & \textbf{Recipient} \\
+\hline
+\\[-2mm]
+$r \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$ & & \\
+$R \leftarrow r \cdot G$ & & \\
+$s \leftarrow \mathcal{H}_1(r \cdot P \,||\, R \,||\, \mathsf{tx}_{prev})$ & & \\
+$P_{tx} \leftarrow P + s \cdot G$ & & \\
+$\mathsf{tx} \leftarrow \{P_{tx}, R, \dots\}$ & & \\
+& $\xrightarrow{\hspace{.6cm} \mathsf{tx} \hspace{.6cm}}$ & \\[3mm]
+& & \textbf{if} $R = \mathcal{O}$ \textbf{then abort} \\
+& & $s' \leftarrow \mathcal{H}_1(d \cdot R \,||\, R \,||\, \mathsf{tx}_{prev})$ \\
+& & \textbf{if} $P + s' \cdot G \neq P_{tx}$ \textbf{then abort} \\
+& & $d_{tx} \leftarrow d + s' \bmod n$ \\
+& & \textit{Sign next transaction using} $d_{tx}$ \\
+\end{tabular}
+\end{minipage}
+}
+\caption{Protocol secure against malicious sender.}
+\label{fig:protocol3}
+\end{figure}
+
+This is fixed in Protocol shown at Fig.~\ref{fig:protocol3}. We assume that $\mathsf{tx}_{prev}$ is always unique because malicious sender reusing exact $(r, \mathsf{tx}_{prev})$ pair could break unlinkability.
+
+
+\textbf{Desired privacy properties:}
+
+\begin{enumerate}
+\item \textbf{Address Unlinkability:}
+For any PPT adversary $\mathcal{A}$, given two addresses $P_0, P_1$ and transaction $\mathsf{tx}$ to $P_b$ for random $b \in \{0,1\}$:
+$$\Pr\left[\mathcal{A}(\mathsf{tx}, P_0, P_1) \rightarrow b' : b' = b\right] \leq \frac{1}{2} + \text{negl}(\lambda)$$
+
+\item \textbf{Transaction Unlinkability:}
+Given two transactions $\mathsf{tx}_i, \mathsf{tx}_j$ in chain with $i \neq j$:
+$$\text{Dist}[(P_{tx,i}, R_i)] \approx_c \text{Dist}[(U_1, U_2)]$$
+where $U_1, U_2 \stackrel{\$}{\leftarrow} \mathbb{G}$ are uniform random group elements.
+
+\item \textbf{Recipient Unlinkability:}
+For any PPT adversary $\mathcal{A}$ given chain $\mathsf{tx}_1, \ldots, \mathsf{tx}_n$:
+$$\Pr\left[\mathcal{A}(\{\mathsf{tx}_i\}_{i=1}^n) \rightarrow (i,j) : P_i = P_j \wedge i \neq j\right] \leq \text{negl}(\lambda)$$
+where $P_i$ is the persistent public key of recipient of $\mathsf{tx}_i$.
+
+\item \textbf{Forward Privacy:}
+Given $d_{tx,i} = d_i + \mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$:
+$$\Pr\left[\mathcal{A}(d_{tx,i}, \{\mathsf{tx}_j\}_{j=1}^n) \rightarrow d_i\right] \leq \text{negl}(\lambda)$$
+\end{enumerate}
+
+\subsubsection{Cryptographic Assumptions}
+
+For the privacy proofs, we require the following standard cryptographic assumptions in the elliptic curve group $\mathbb{G}$ of prime order $n$ with generator $G$:
+
+\begin{definition}[Decisional Diffie-Hellman (DDH)]
+The DDH problem is $S$-hard in $\mathbb{G}$ if it has $S$ as a security profile in the following distinguishing scenario:
+\begin{enumerate}
+\item Sample $a, b, c \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$ and $d \stackrel{\$}{\leftarrow} \{0,1\}$
+\item If $d = 0$: set $T \leftarrow (a \cdot G, b \cdot G, ab \cdot G)$
+\item If $d = 1$: set $T \leftarrow (a \cdot G, b \cdot G, c \cdot G)$
+\item $d' \gets \mathcal{A}(T)$
+\item The attack is successful iff $d' = d$
+\end{enumerate}
+The advantage is $\text{Adv}^{\text{DDH}}_{\mathcal{A}} = \left|\Pr[d' = d] - \frac{1}{2}\right|$.
+\end{definition}
+
+\begin{definition}[Discrete Logarithm (DL)]
+The DL problem is $S$-hard in $\mathbb{G}$ if it has $S$ as a security profile in the following attack scenario:
+\begin{enumerate}
+\item $x \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$, $X \leftarrow x \cdot G$
+\item $x' \gets \mathcal{A}(X)$
+\item The attack is successful iff $x' = x$
+\end{enumerate}
+\end{definition}
+
+We model $\mathcal{H}_1 \colon \mathbb{G} \times \mathbb{G} \times \mathcal{M} \to \mathbb{Z}_n$ as a hash function with standard collision-resistance and additional properties suitable for key derivation.
+
+\subsubsection{Privacy Proofs}
+
+\begin{theorem}[Address Unlinkability]
+\label{thm:address-unlinkability}
+If the DDH problem is $S$-hard in $\mathbb{G}$ and $\mathcal{H}_1$ is modeled as a random oracle, then the protocol in Fig.~\ref{fig:protocol3} satisfies address unlinkability. Specifically, for any PPT adversary $\mathcal{A}$:
+$$\left|\Pr\left[\mathcal{A}(\mathsf{tx}, P_0, P_1) = b\right] - \frac{1}{2}\right| \leq \text{Adv}^{\text{DDH}}_{\mathcal{A}} + \frac{q_H}{n}$$
+where $q_H$ is the number of hash queries.
+\end{theorem}
+
+\begin{proof}
+Consider the address unlinkability experiment where adversary $\mathcal{A}$ receives two public keys $P_0 = d_0 \cdot G$ and $P_1 = d_1 \cdot G$, and a transaction $\mathsf{tx} = (P_{tx}, R, \ldots)$ created for recipient $P_b$ where $b \stackrel{\$}{\leftarrow} \{0,1\}$.
+
+For the transaction to $P_b$, the sender computes:
+\begin{align*}
+r &\stackrel{\$}{\leftarrow} \mathbb{Z}_n^*, \quad R = r \cdot G \\
+s &= \mathcal{H}_1(r \cdot P_b \,||\, R \,||\, \mathsf{tx}_{prev}) \\
+P_{tx} &= P_b + s \cdot G
+\end{align*}
+
+We use a sequence of games:
+
+\textbf{Game 0:} The real address unlinkability experiment.
+
+\textbf{Game 1:} Replace $s = \mathcal{H}_1(r \cdot P_b \,||\, R \,||\, \mathsf{tx}_{prev})$ with a uniformly random $s \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$.
+
+\noindent\textit{Claim:} $|\Pr[\text{Game 0}] - \Pr[\text{Game 1}]| \leq \text{Adv}^{\text{DDH}}_{\mathcal{A}} + \frac{q_H}{n}$.
+
+To see this, consider the tuple $(P_b, R, r \cdot P_b) = (d_b \cdot G, r \cdot G, rd_b \cdot G)$. Under the DDH assumption, this is computationally indistinguishable from $(d_b \cdot G, r \cdot G, c \cdot G)$ where $c \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$. Since $\mathcal{H}_1$ is modeled as a random oracle and $\mathsf{tx}_{prev}$ is unique (by assumption), if the adversary does not query $\mathcal{H}_1(r \cdot P_b \,||\, R \,||\, \mathsf{tx}_{prev})$, the value $s$ is uniformly random. The probability of guessing the correct input is at most $\frac{q_H}{n}$.
+
+\textbf{Game 1 Analysis:} In Game 1, we have:
+$$P_{tx} = P_b + s \cdot G$$
+where $s \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$ is uniformly random and independent of $b$. Since $s$ is uniform, $P_{tx}$ is uniformly distributed in $\mathbb{G}$ and independent of which public key $P_b$ was used. Therefore:
+$$\Pr[\mathcal{A}(\mathsf{tx}, P_0, P_1) = b \,|\, \text{Game 1}] = \frac{1}{2}$$
+
+Combining the games, we obtain the theorem statement.
+\end{proof}
+
+\begin{theorem}[Transaction Unlinkability]
+\label{thm:transaction-unlinkability}
+If the DDH problem is $S$-hard in $\mathbb{G}$ and $\mathcal{H}_1$ is modeled as a random oracle, then for any two transactions $\mathsf{tx}_i, \mathsf{tx}_j$ with $i \neq j$:
+$$\text{Dist}[(P_{tx,i}, R_i)] \approx_c \text{Dist}[(U_1, U_2)]$$
+where $U_1, U_2 \stackrel{\$}{\leftarrow} \mathbb{G}$ are uniformly random.
+\end{theorem}
+
+\begin{proof}
+For transaction $\mathsf{tx}_i$, the sender chooses $r_i \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$ and computes:
+\begin{align*}
+R_i &= r_i \cdot G \\
+s_i &= \mathcal{H}_1(r_i \cdot P_i \,||\, R_i \,||\, \mathsf{tx}_{i-1}) \\
+P_{tx,i} &= P_i + s_i \cdot G
+\end{align*}
+
+Since $r_i$ is chosen uniformly at random, $R_i = r_i \cdot G$ is uniformly distributed in $\mathbb{G}$.
+
+By the DDH assumption and the random oracle property of $\mathcal{H}_1$ (as argued in Theorem~\ref{thm:address-unlinkability}), the value $s_i$ is computationally indistinguishable from uniform in $\mathbb{Z}_n^*$ (except with negligible probability related to hash collisions and DDH advantage).
+
+Given that $s_i$ is computationally indistinguishable from uniform, $P_{tx,i} = P_i + s_i \cdot G$ is computationally indistinguishable from a uniformly random group element, since adding a random scalar times the generator to any group element yields a uniformly random element.
+
+Therefore, the pair $(P_{tx,i}, R_i)$ is computationally indistinguishable from two independent uniformly random group elements $(U_1, U_2)$.
+
+Since this holds for each transaction independently (with fresh randomness $r_i$ for each transaction), transactions are unlinkable.
+\end{proof}
+
+\begin{theorem}[Recipient Unlinkability]
+\label{thm:recipient-unlinkability}
+If the DDH problem is $S$-hard in $\mathbb{G}$, $\mathcal{H}_1$ is collision-resistant and modeled as a random oracle, and $\mathsf{tx}_{prev}$ is always unique, then for any PPT adversary $\mathcal{A}$ given transactions $\mathsf{tx}_1, \ldots, \mathsf{tx}_n$:
+$$\Pr\left[\mathcal{A}(\{\mathsf{tx}_i\}_{i=1}^n) \rightarrow (i,j) : P_i = P_j \wedge i \neq j\right] \leq \text{negl}(\lambda)$$
+\end{theorem}
+
+\begin{proof}
+Suppose adversary $\mathcal{A}$ successfully identifies $(i,j)$ with $i \neq j$ such that transactions $\mathsf{tx}_i$ and $\mathsf{tx}_j$ belong to the same recipient with persistent public key $P = P_i = P_j$.
+
+For this attack to succeed, $\mathcal{A}$ must distinguish that both:
+\begin{align*}
+P_{tx,i} &= P + s_i \cdot G \text{ where } s_i = \mathcal{H}_1(d \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1}) \\
+P_{tx,j} &= P + s_j \cdot G \text{ where } s_j = \mathcal{H}_1(d \cdot R_j \,||\, R_j \,||\, \mathsf{tx}_{j-1})
+\end{align*}
+are derived from the same $P = d \cdot G$.
+
+However, by Theorem~\ref{thm:transaction-unlinkability}, each $(P_{tx,i}, R_i)$ is computationally indistinguishable from uniformly random group elements. To link transactions $i$ and $j$, the adversary would need to:
+
+\begin{enumerate}
+\item Either compute $s_i$ and $s_j$ from the public data, which requires solving $P_{tx,i} - s_i \cdot G = P_{tx,j} - s_j \cdot G$, or
+\item Find a relation between $(P_{tx,i}, R_i)$ and $(P_{tx,j}, R_j)$ that reveals they share the same $P$.
+\end{enumerate}
+
+For (1), computing $s_i = \mathcal{H}_1(d \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$ requires knowing the shared secret $d \cdot R_i$. Given $(R_i, P) = (r_i \cdot G, d \cdot G)$, computing $d \cdot R_i = dr_i \cdot G$ without knowing $d$ or $r_i$ is the DDH problem.
+
+For (2), since $R_i$ and $R_j$ are independent (fresh randomness per transaction), and $s_i, s_j$ are outputs of the random oracle $\mathcal{H}_1$ on distinct inputs (since $\mathsf{tx}_{i-1} \neq \mathsf{tx}_{j-1}$ by uniqueness assumption and $R_i \neq R_j$ with overwhelming probability), there is no computable relation between the transactions.
+
+Therefore, the adversary's success probability is bounded by the DDH advantage plus negligible terms from hash collisions and birthday paradox on random group elements.
+\end{proof}
+
+\begin{theorem}[Forward Privacy]
+\label{thm:forward-privacy}
+If the discrete logarithm problem is $S$-hard in $\mathbb{G}$ and $\mathcal{H}_1$ is modeled as a random oracle, then for any PPT adversary $\mathcal{A}$:
+$$\Pr\left[\mathcal{A}(d_{tx,i}, \{\mathsf{tx}_j\}_{j=1}^n) \rightarrow d_i\right] \leq \text{Adv}^{\text{DL}}_{\mathcal{A}} + \frac{q_H}{n}$$
+where $d_{tx,i} = d_i + s_i \bmod n$ and $s_i = \mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$.
+\end{theorem}
+
+\begin{proof}
+The recipient's transaction-specific private key is:
+$$d_{tx,i} = d_i + s_i \bmod n$$
+where $s_i = \mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$.
+
+To recover $d_i$ from $d_{tx,i}$, the adversary must compute $s_i$, since:
+$$d_i = d_{tx,i} - s_i \bmod n$$
+
+Computing $s_i$ requires evaluating $\mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$, which in turn requires computing the shared secret $d_i \cdot R_i = d_i r_i \cdot G$.
+
+The adversary observes:
+\begin{itemize}
+\item $R_i = r_i \cdot G$ (from the transaction)
+\item $P_i = d_i \cdot G$ (possibly inferred or public, though unlinkable by Theorem~\ref{thm:recipient-unlinkability})
+\item $d_{tx,i}$ (the leaked transaction key)
+\end{itemize}
+
+\textbf{Case 1:} The adversary does not query $\mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$.
+
+Since $\mathcal{H}_1$ is a random oracle, without querying the correct input, $s_i$ appears uniformly random in $\mathbb{Z}_n$. Given $d_{tx,i} = d_i + s_i \bmod n$ where $s_i$ is unknown and uniform, the value $d_i$ is information-theoretically hidden. The adversary can succeed only by guessing among $q_H$ hash queries, with probability at most $\frac{q_H}{n}$.
+
+\textbf{Case 2:} The adversary queries $\mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$.
+
+To make this query, the adversary must compute $d_i \cdot R_i = d_i r_i \cdot G$ from $P_i = d_i \cdot G$ and $R_i = r_i \cdot G$. This is precisely the Computational Diffie-Hellman (CDH) problem, which is at least as hard as the discrete logarithm problem. If the adversary can compute $d_i \cdot R_i$, they can use the discrete logarithm oracle to extract $d_i$ from $P_i$ (or $r_i$ from $R_i$), succeeding with probability at most $\text{Adv}^{\text{DL}}_{\mathcal{A}}$.
+
+Combining both cases, the adversary's advantage in recovering $d_i$ is bounded by $\text{Adv}^{\text{DL}}_{\mathcal{A}} + \frac{q_H}{n}$, which is negligible.
+\end{proof}
+
+\subsubsection{Remarks on Standard Model}
+
+The proofs above use $\mathcal{H}_1$ as a random oracle. To achieve standard model security, we propose the following adjustment:
+
+\textbf{Adjustment:} Replace the hash function $\mathcal{H}_1$ with a key derivation function (KDF) based on a pseudorandom function (PRF) family $\{f_k\}_{k \in \mathcal{K}}$ combined with randomness extraction. Specifically:
+\begin{enumerate}
+\item Use a randomness extractor $\text{Ext} \colon \mathbb{G} \to \{0,1\}^\lambda$ based on a strong randomness extractor (e.g., leftmost bits of the $x$-coordinate under suitable encoding).
+\item Define $s \leftarrow \text{PRF}(\text{Ext}(r \cdot P), R \,||\, \mathsf{tx}_{prev})$ where PRF is a pseudorandom function.
+\end{enumerate}
+
+Under the DDH assumption, the value $r \cdot P$ is pseudorandom (given $r \cdot G$ and $P$), and thus $\text{Ext}(r \cdot P)$ serves as a pseudorandom key for the PRF. The PRF output is then pseudorandom, providing similar guarantees to the random oracle model.
+
+With this adjustment, the proofs can be adapted to the standard model by replacing random oracle arguments with PRF indistinguishability under DDH, at the cost of slightly more complex security reductions and stronger assumptions on the randomness extractor properties.
+
+
+\section{Discussion}
 
 The security proofs against blocking and double spending are also valid in case when the commitment scheme is omitted from the construction and the transaction data hash is computed by $\txhash = H(\pubkey',x,\auxd)$.
 At the same time, there seem to be no obvious ways of proving that such a simplified scheme is secure against association.
