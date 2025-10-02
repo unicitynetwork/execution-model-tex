@@ -945,41 +945,9 @@ The recipient maintains only the persistent secret $d$ and derives ephemeral sig
 
 \subsubsection{Non-Interactive Protocol}
 
-For applications requiring persistent public keys as ``addresses'', or non-interactive operation, the parties can create the blinded public key using Diffie-Hellman key exchange. The recipient publishes a persistent public key $P = d \cdot G$. The protocol is shown in Figure~\ref{fig:protocol2}.
+For applications requiring persistent public keys as ``addresses'', or non-interactive operation, the parties can create the blinded public key using Diffie-Hellman key exchange. The recipient publishes a persistent public key $P = d \cdot G$. The protocol is shown in Figure~\ref{fig:protocol3}.
 
-\begin{figure}[!htb]
-\centering
-\fbox{
-\begin{minipage}{0.9\textwidth}
-
-\underline{Setup:} Recipient publishes persistent public key $P = d \cdot G$
-
-\vspace{3mm}
-\begin{tabular}{lcl}
-\textbf{Sender} & & \textbf{Recipient} \\
-\hline
-\\[-2mm]
-$r \stackrel{\$}{\leftarrow} \mathbb{Z}_n$ & & \\
-$R \leftarrow r \cdot G$ & & \\
-$S \leftarrow r \cdot P$ & & \\
-$m \leftarrow \mathcal{H}(S)$ & & \\
-$P_{tx} \leftarrow P + m \cdot G$ & & \\
-$\mathsf{tx} \leftarrow \{P_{tx}, R, \ldots\}$ & & \\
-& $\xrightarrow{\hspace{1.5cm} \mathsf{tx} \hspace{1.5cm}}$ & \\[3mm]
-& & $S \leftarrow d \cdot R$ \\
-& & $m \leftarrow \mathcal{H}(S)$ \\
-& & $d_{tx} \leftarrow d + m \bmod n$ \\
-& & $\sigma \leftarrow \mathsf{Sign}_{d_{tx}}(\mathsf{tx}_{next})$ \\
-\end{tabular}
-\end{minipage}
-}
-\caption{Non-interactive protocol using Diffie-Hellman key exchange to blind addresses. The recipient can derive signing keys for any transaction without prior interaction. We assume honest sender.}
-\label{fig:protocol2}
-\end{figure}
-
-The sender generates an ephemeral keypair $(r, R = r \cdot G)$ and computes a Diffie-Hellman shared secret $S = r \cdot P$. The blinding mask $m = H(S)$ is used to compute the blinded public key $P' = P + m \cdot G$. The ephemeral public key $R$ is included in $\auxd$. Upon receiving the transaction, the recipient computes the same shared secret $S = d \cdot R$ and derives $d' = d + m \bmod n$.
-
-This construction is insecure because the sender can choose a predictable $r$ or leak it, thereby compromising the transaction unlinkability.
+The key challenge in non-interactive protocols is protecting against malicious senders who might choose predictable ephemeral keys $r$ or leak them to compromise transaction unlinkability. The secure construction addresses this by binding the blinding factor to both the shared Diffie-Hellman secret and public transaction data.
 
 \begin{figure}[ht]
 \centering
@@ -1008,11 +976,29 @@ $\mathsf{tx} \leftarrow \{P_{tx}, R, \dots\}$ & & \\
 \end{tabular}
 \end{minipage}
 }
-\caption{Protocol secure against malicious sender.}
+\caption{Non-interactive protocol secure against malicious sender.}
 \label{fig:protocol3}
 \end{figure}
 
-This is fixed in Protocol shown at Fig.~\ref{fig:protocol3}. We assume that $\mathsf{tx}_{prev}$ is always unique because malicious sender reusing exact $(r, \mathsf{tx}_{prev})$ pair could break unlinkability.
+The sender generates an ephemeral keypair $(r, R = r \cdot G)$ and computes a Diffie-Hellman shared secret $r \cdot P$. The blinding factor $s$ is derived by hashing the shared secret together with the ephemeral public key $R$ and the previous transaction identifier $\mathsf{tx}_{prev}$:
+$$s = \mathcal{H}_1(r \cdot P \,||\, R \,||\, \mathsf{tx}_{prev})$$
+
+The transaction-specific public key is computed as $P_{tx} = P + s \cdot G$, and both $P_{tx}$ and $R$ are included in the transaction. Upon receiving the transaction, the recipient:
+\begin{enumerate}
+\item Verifies that $R \neq \mathcal{O}$ (the point at infinity) to prevent trivial attacks
+\item Computes the same shared secret $d \cdot R = r \cdot P$ using their persistent private key
+\item Derives $s' = \mathcal{H}_1(d \cdot R \,||\, R \,||\, \mathsf{tx}_{prev})$ and verifies that $P + s' \cdot G = P_{tx}$
+\item Computes the transaction-specific private key $d_{tx} = d + s' \bmod n$ for signing the next transaction
+\end{enumerate}
+
+By including both $R$ and $\mathsf{tx}_{prev}$ in the hash input, the protocol ensures that:
+\begin{itemize}
+\item Even if the sender chooses a predictable $r$, the blinding factor $s$ depends on the hash function output and remains unpredictable to external observers
+\item The recipient can verify that the sender correctly computed $P_{tx}$ without learning $r$
+\item Each transaction uses a unique blinding factor (assuming $\mathsf{tx}_{prev}$ is always unique), preventing linkability even if the sender reuses the same $r$ across different transactions
+\end{itemize}
+
+We assume that $\mathsf{tx}_{prev}$ is always unique, as a malicious sender reusing the exact $(r, \mathsf{tx}_{prev})$ pair could break unlinkability. In practice, $\mathsf{tx}_{prev}$ can be the hash of the previous transaction or a timestamp with sufficient granularity.
 
 
 \textbf{Desired privacy properties:}
