@@ -1008,19 +1008,27 @@ We assume that $\mathsf{tx}_{prev}$ is always unique, as a malicious sender reus
 For any PPT adversary $\mathcal{A}$, given two addresses $P_0, P_1$ and transaction $\mathsf{tx}$ to $P_b$ for random $b \in \{0,1\}$:
 $$\Pr\left[\mathcal{A}(\mathsf{tx}, P_0, P_1) \rightarrow b' : b' = b\right] \leq \frac{1}{2} + \text{negl}(\lambda)$$
 
+\textit{Informally:} An adversary observing a transaction cannot determine which of two candidate recipients it was sent to, beyond random guessing. The transaction-specific public key $P_{tx}$ reveals no information about the underlying persistent address $P$.
+
 \item \textbf{Transaction Unlinkability:}
 Given two transactions $\mathsf{tx}_i, \mathsf{tx}_j$ in chain with $i \neq j$:
 $$\text{Dist}[(P_{tx,i}, R_i)] \approx_c \text{Dist}[(U_1, U_2)]$$
 where $U_1, U_2 \stackrel{\$}{\leftarrow} \mathbb{G}$ are uniform random group elements.
+
+\textit{Informally:} The token ownerhship-related fields in each transaction appears as uniformly random data. The pair $(P_{tx}, R)$ in any transaction is computationally indistinguishable from two random group elements, making it impossible to correlate transactions based on their public components.
 
 \item \textbf{Recipient Unlinkability:}
 For any PPT adversary $\mathcal{A}$ given chain $\mathsf{tx}_1, \ldots, \mathsf{tx}_n$:
 $$\Pr\left[\mathcal{A}(\{\mathsf{tx}_i\}_{i=1}^n) \rightarrow (i,j) : P_i = P_j \wedge i \neq j\right] \leq \text{negl}(\lambda)$$
 where $P_i$ is the persistent public key of recipient of $\mathsf{tx}_i$.
 
+\textit{Informally:} An adversary observing multiple transactions cannot determine which transactions belong to the same recipient. Even when a recipient reuses their persistent public key $P$ across multiple transactions, the resulting transaction-specific keys $P_{tx,i}$ and $P_{tx,j}$ appear unrelated.
+
 \item \textbf{Forward Privacy:}
 Given $d_{tx,i} = d_i + \mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$:
 $$\Pr\left[\mathcal{A}(d_{tx,i}, \{\mathsf{tx}_j\}_{j=1}^n) \rightarrow d_i\right] \leq \text{negl}(\lambda)$$
+
+\textit{Informally:} If a transaction-specific ephemeral private key $d_{tx,i}$ is compromised (e.g., leaked or extracted from a device), the adversary cannot recover the recipient's persistent private key $d_i$. This ensures that past key exposures do not compromise the recipient's persistent identity or future transactions.
 \end{enumerate}
 
 \subsubsection{Cryptographic Assumptions}
