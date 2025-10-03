@@ -1001,24 +1001,52 @@ By including both $R$ and $\mathsf{tx}_{prev}$ in the hash input, the protocol e
 We assume that $\mathsf{tx}_{prev}$ is always unique, as a malicious sender reusing the exact $(r, \mathsf{tx}_{prev})$ pair could break unlinkability. In practice, $\mathsf{tx}_{prev}$ can be the hash of the previous transaction or a timestamp with sufficient granularity.
 
 
-\subsubsection{Desired Privacy Properties:}
+\subsubsection{Privacy Attack Scenarios}
 
+A \emph{transaction unlinkability adversary} $\mathcal{A} = (\mathcal{A}_1, \mathcal{A}_2)$ is two-stage. \medskip
+
+\noindent\textbf{Transaction unlinkability scenario} involves the following steps:
 \begin{enumerate}
-\item \textbf{Transaction Identity Unlinkability:}
-For any two transactions $\mathsf{tx}_i, \mathsf{tx}_j$ with $i \neq j$:
-$$\text{Dist}[(P_{tx,i}, R_i)] \approx_c \text{Dist}[(U_1, U_2)]$$
-where $U_1, U_2 \stackrel{\$}{\leftarrow} \mathbb{G}$ are uniform random group elements.
+\item $(P, \mathsf{tx}_{prev}, a) \gets \mathcal{A}_1$
+\item $r \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$, $R \leftarrow r \cdot G$
+\item $s \leftarrow \mathcal{H}_1(r \cdot P \,||\, R \,||\, \mathsf{tx}_{prev})$
+\item $P_{tx} \leftarrow P + s \cdot G$
+\item $b \stackrel{\$}{\leftarrow} \{0,1\}$
+\item If $b = 0$: $(U_1, U_2) \leftarrow (P_{tx}, R)$
+\item If $b = 1$: $U_1, U_2 \stackrel{\$}{\leftarrow} \mathbb{G}$
+\item $b' \gets \mathcal{A}_2(a; U_1, U_2)$
+\item The attack is successful iff $b' = b$
+\end{enumerate}
+
+\begin{definition}[Transaction unlinkability security]
+The protocol is said to be $S$-secure for transaction unlinkability if it has $S$ as a security profile in the transaction unlinkability scenario.
+\end{definition}
 
 \textit{Informally:} The ownership-related fields in each transaction appear as uniformly random data. The pair $(P_{tx}, R)$ in any transaction is computationally indistinguishable from two random group elements, making all transactions unlinkable to each other and to any recipient addresses.
 
-\item \textbf{Forward Privacy:}
-Given $d_{tx,i} = d_i + \mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$:
-$$\Pr\left[\mathcal{A}(d_{tx,i}, \{\mathsf{tx}_j\}_{j=1}^n) \rightarrow d_i\right] \leq \text{negl}(\lambda)$$
+\medskip
 
-\textit{Informally:} If a transaction-specific private key $d_{tx,i}$ is compromised (e.g., leaked or extracted from a device), the adversary cannot recover the recipient's persistent private key $d_i$. This ensures that past key exposures do not compromise the recipient's persistent identity or future transactions.
+\noindent A \emph{forward privacy adversary} $\mathcal{A}$ receives a transaction-specific private key and transaction data. \medskip
+
+\noindent\textbf{Forward privacy scenario} involves the following steps:
+\begin{enumerate}
+\item $d \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$, $P \leftarrow d \cdot G$
+\item $r \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$, $R \leftarrow r \cdot G$
+\item $s \leftarrow \mathcal{H}_1(d \cdot R \,||\, R \,||\, \mathsf{tx}_{prev})$ for some fixed $\mathsf{tx}_{prev}$
+\item $d_{tx} \leftarrow d + s \bmod n$
+\item $d' \gets \mathcal{A}(d_{tx}, R, P, \mathsf{tx}_{prev})$
+\item The attack is successful iff $d' = d$
 \end{enumerate}
 
-\textbf{Remark:} Transaction Identity Unlinkability implies several important corollaries:
+\begin{definition}[Forward privacy security]
+The protocol is said to be $S$-secure for forward privacy if it has $S$ as a security profile in the forward privacy scenario.
+\end{definition}
+
+\textit{Informally:} If a transaction-specific private key $d_{tx}$ is compromised (e.g., leaked or extracted from a device), the adversary cannot recover the recipient's persistent private key $d$. This ensures that past key exposures do not compromise the recipient's persistent identity or future transactions.
+
+\medskip
+
+\noindent\textbf{Remark:} Transaction unlinkability implies several important corollaries:
 \begin{itemize}
 \item \emph{Address Unlinkability:} An adversary observing a transaction cannot determine which of two candidate recipients it was sent to, beyond random guessing. This follows immediately since if $(P_{tx}, R)$ is pseudorandom, it reveals no information about the underlying persistent address $P$.
 
@@ -1054,71 +1082,82 @@ We model $\mathcal{H}_1 \colon \mathbb{G} \times \mathbb{G} \times \mathcal{M} \
 
 \subsubsection{Privacy Proofs}
 
-\begin{theorem}[Transaction Identity Unlinkability]
+\begin{theorem}[Transaction unlinkability]
 \label{thm:transaction-unlinkability}
-If the DDH problem is $S$-hard in $\mathbb{G}$ and $\mathcal{H}_1$ is modeled as a random oracle, then the protocol in Fig.~\ref{fig:protocol3} satisfies transaction identity unlinkability. Specifically, for any two transactions $\mathsf{tx}_i, \mathsf{tx}_j$ with $i \neq j$:
-$$\text{Dist}[(P_{tx,i}, R_i)] \approx_c \text{Dist}[(U_1, U_2)]$$
-where $U_1, U_2 \stackrel{\$}{\leftarrow} \mathbb{G}$ are uniformly random, with distinguishing advantage at most $\text{Adv}^{\text{DDH}}_{\mathcal{A}} + \frac{q_H}{n}$ where $q_H$ is the number of hash queries.
+If the DDH problem is $S$-hard in $\mathbb{G}$ and $\mathcal{H}_1$ is modeled as a random oracle, then the protocol in Fig.~\ref{fig:protocol3} is $S_\mathsf{unlink}$-secure for transaction unlinkability, where
+$$S_\mathsf{unlink}(\epsilon) = S(\epsilon) - t_\mathsf{hash} - t_\mathsf{mul} - t_\mathsf{add}$$
+and $t_\mathsf{hash}$, $t_\mathsf{mul}$, $t_\mathsf{add}$ are the hash computation time, scalar multiplication time, and group addition time, respectively.
 \end{theorem}
 
 \begin{proof}
-For transaction $\mathsf{tx}_i$, the sender chooses $r_i \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$ and computes:
-\begin{align*}
-R_i &= r_i \cdot G \\
-s_i &= \mathcal{H}_1(r_i \cdot P_i \,||\, R_i \,||\, \mathsf{tx}_{i-1}) \\
-P_{tx,i} &= P_i + s_i \cdot G
-\end{align*}
+Let $\mathcal{A} = (\mathcal{A}_1, \mathcal{A}_2)$ be a $t$-time transaction unlinkability adversary that succeeds with probability $\epsilon$. We construct a DDH distinguisher $\mathcal{D}$ as follows:
 
-We use a game-based argument to show that $(P_{tx,i}, R_i)$ is indistinguishable from $(U_1, U_2)$ where $U_1, U_2 \stackrel{\$}{\leftarrow} \mathbb{G}$.
+$\mathcal{D}(X, Y, Z)$ where $X = a \cdot G$, $Y = b \cdot G$, and $Z$ is either $ab \cdot G$ or $c \cdot G$ for random $c$:
+\begin{enumerate}
+\item Run $(P, \mathsf{tx}_{prev}, a) \gets \mathcal{A}_1$
+\item Set $R \leftarrow Y$ (i.e., $R = b \cdot G$)
+\item Query the random oracle $\mathcal{H}_1$ to obtain $s \leftarrow \mathcal{H}_1(Z \,||\, R \,||\, \mathsf{tx}_{prev})$
+\item Compute $P_{tx} \leftarrow P + s \cdot G$
+\item Sample $b \stackrel{\$}{\leftarrow} \{0,1\}$
+\item If $b = 0$: set $(U_1, U_2) \leftarrow (P_{tx}, R)$
+\item If $b = 1$: sample $U_1, U_2 \stackrel{\$}{\leftarrow} \mathbb{G}$
+\item Run $b' \gets \mathcal{A}_2(a; U_1, U_2)$
+\item If $b' = b$ output 1 (guess DDH tuple), else output 0 (guess random)
+\end{enumerate}
 
-\textbf{Game 0:} The real transaction generation process as described above.
+\textbf{Analysis:} If $(X, Y, Z)$ is a DDH tuple, then $Z = r \cdot P$ where $r$ is the discrete log of $R = r \cdot G$. The random oracle $\mathcal{H}_1(Z \,||\, R \,||\, \mathsf{tx}_{prev})$ returns a uniformly random value $s \in \mathbb{Z}_n$, making $P_{tx} = P + s \cdot G$ uniformly random in $\mathbb{G}$. In this case, the distribution of $(P_{tx}, R)$ is identical to $(U_1, U_2)$ when $b = 1$, and $\mathcal{A}_2$ cannot distinguish better than random guessing.
 
-\textbf{Game 1:} Replace $s_i = \mathcal{H}_1(r_i \cdot P_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$ with a uniformly random $s_i \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$.
+If $(X, Y, Z)$ is a random tuple, then $Z$ is a uniformly random group element independent of $R$ and $P$. However, since $\mathcal{H}_1$ is a random oracle, $s = \mathcal{H}_1(Z \,||\, R \,||\, \mathsf{tx}_{prev})$ is still uniformly random (as long as the adversary does not query this exact input, which occurs with probability at most $q_H/n$ where $q_H$ is polynomial in the security parameter). Therefore, $(P_{tx}, R)$ remains computationally indistinguishable from $(U_1, U_2)$.
 
-\noindent\textit{Claim:} $|\Pr[\text{Game 0}] - \Pr[\text{Game 1}]| \leq \text{Adv}^{\text{DDH}}_{\mathcal{A}} + \frac{q_H}{n}$.
+The computational time overhead of $\mathcal{D}$ is $\tau(t) = t + t_\mathsf{hash} + t_\mathsf{mul} + t_\mathsf{add}$, where $t_\mathsf{hash}$ is the time to query $\mathcal{H}_1$, $t_\mathsf{mul}$ is the time for scalar multiplication to compute $s \cdot G$, and $t_\mathsf{add}$ is the time for group addition to compute $P + s \cdot G$.
 
-Consider the tuple $(P_i, R_i, r_i \cdot P_i) = (d_i \cdot G, r_i \cdot G, r_i d_i \cdot G)$. Under the DDH assumption, this is computationally indistinguishable from $(d_i \cdot G, r_i \cdot G, c \cdot G)$ where $c \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$. Since $\mathcal{H}_1$ is modeled as a random oracle and $\mathsf{tx}_{i-1}$ is unique (by assumption), if the adversary does not query $\mathcal{H}_1(r_i \cdot P_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$, the value $s_i$ is uniformly random. The probability of guessing the correct input is at most $\frac{q_H}{n}$.
-
-\textbf{Game 1 Analysis:} Since $r_i$ is chosen uniformly at random, $R_i = r_i \cdot G$ is uniformly distributed in $\mathbb{G}$. Given that $s_i \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$ is uniformly random and independent, $P_{tx,i} = P_i + s_i \cdot G$ is uniformly distributed in $\mathbb{G}$, since adding a uniformly random scalar times the generator to any group element yields a uniformly random element.
-
-Therefore, in Game 1, $(P_{tx,i}, R_i)$ has the same distribution as two independent uniformly random group elements $(U_1, U_2)$.
-
-Since this holds for each transaction independently (with fresh randomness $r_i$ for each transaction), the identity data in all transactions is unlinkable.
+By equation (\ref{eq:losebound}), the function $S_\mathsf{unlink}$ defined by
+\[
+S_\mathsf{unlink}(\epsilon) = \tau^{-1}(S(\epsilon)) = S(\epsilon) - t_\mathsf{hash} - t_\mathsf{mul} - t_\mathsf{add}
+\]
+is a security profile of the protocol against transaction unlinkability.
 \end{proof}
 
-\begin{theorem}[Forward Privacy]
+\begin{theorem}[Forward privacy]
 \label{thm:forward-privacy}
-If the discrete logarithm problem is $S$-hard in $\mathbb{G}$ and $\mathcal{H}_1$ is modeled as a random oracle, then for any PPT adversary $\mathcal{A}$:
-$$\Pr\left[\mathcal{A}(d_{tx,i}, \{\mathsf{tx}_j\}_{j=1}^n) \rightarrow d_i\right] \leq \text{Adv}^{\text{DL}}_{\mathcal{A}} + \frac{q_H}{n}$$
-where $d_{tx,i} = d_i + s_i \bmod n$ and $s_i = \mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$.
+If the discrete logarithm problem is $S$-hard in $\mathbb{G}$ and $\mathcal{H}_1$ is modeled as a random oracle, then the protocol in Fig.~\ref{fig:protocol3} is $S_\mathsf{fwd}$-secure for forward privacy, where
+$$S_\mathsf{fwd}(\epsilon) = S(\epsilon) - t_\mathsf{mul}$$
+and $t_\mathsf{mul}$ is the scalar multiplication time.
 \end{theorem}
 
 \begin{proof}
-The recipient's transaction-specific private key is:
-$$d_{tx,i} = d_i + s_i \bmod n$$
-where $s_i = \mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$.
+Let $\mathcal{A}$ be a $t$-time forward privacy adversary that succeeds with probability $\epsilon$. We construct a discrete logarithm solver $\mathcal{B}$ as follows:
 
-To recover $d_i$ from $d_{tx,i}$, the adversary must compute $s_i$, since:
-$$d_i = d_{tx,i} - s_i \bmod n$$
+$\mathcal{B}(P)$ where $P = d \cdot G$ for unknown $d$:
+\begin{enumerate}
+\item Sample $r \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$, compute $R \leftarrow r \cdot G$
+\item Compute $S \leftarrow r \cdot P$ (note: $S = rd \cdot G = d \cdot R$)
+\item Query the random oracle to obtain $s \leftarrow \mathcal{H}_1(S \,||\, R \,||\, \mathsf{tx}_{prev})$ for some fixed $\mathsf{tx}_{prev}$
+\item Compute $P_{tx} \leftarrow P + s \cdot G$, which equals $(d + s) \cdot G$
+\item Sample $\hat{d} \stackrel{\$}{\leftarrow} \mathbb{Z}_n^*$ and give $(\hat{d}, R, P, \mathsf{tx}_{prev})$ to $\mathcal{A}$
+\item Run $d' \gets \mathcal{A}(\hat{d}, R, P, \mathsf{tx}_{prev})$
+\item Output $d'$
+\end{enumerate}
 
-Computing $s_i$ requires evaluating $\mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$, which in turn requires computing the shared secret $d_i \cdot R_i = d_i r_i \cdot G$.
+\textbf{Analysis:} Note that $\hat{d}$ is sampled uniformly at random from $\mathbb{Z}_n^*$, which has the same distribution as $d + s \bmod n$ where both $d$ and $s$ are uniform. Therefore, the view of $\mathcal{A}$ is identically distributed to the forward privacy scenario, where it receives $(d_{tx}, R, P, \mathsf{tx}_{prev})$ with $d_{tx} = d + s \bmod n$.
 
-The adversary observes:
+If $\mathcal{A}$ successfully recovers $d$, then $\mathcal{B}$ succeeds in solving the discrete logarithm of $P$. The key observation is that to recover $d$ from $d_{tx} = d + s \bmod n$, the adversary $\mathcal{A}$ must either:
+
 \begin{itemize}
-\item $R_i = r_i \cdot G$ (from the transaction)
-\item $P_i = d_i \cdot G$ (possibly inferred or public, though unlinkable by Theorem~\ref{thm:transaction-unlinkability})
-\item $d_{tx,i}$ (the leaked transaction key)
+\item \textit{Case 1:} Guess the value of $s$ without querying $\mathcal{H}_1(d \cdot R \,||\, R \,||\, \mathsf{tx}_{prev})$. Since $\mathcal{H}_1$ is a random oracle, $s$ is uniformly random and information-theoretically hides $d$ in the equation $d_{tx} = d + s \bmod n$. The adversary's advantage in this case is at most the probability of a lucky guess among hash queries, which is negligible.
+
+\item \textit{Case 2:} Query $\mathcal{H}_1(d \cdot R \,||\, R \,||\, \mathsf{tx}_{prev})$ to learn $s$, then compute $d = d_{tx} - s \bmod n$. However, to make this query, the adversary must compute $d \cdot R$ from $P = d \cdot G$ and $R = r \cdot G$, which is the Computational Diffie-Hellman (CDH) problem. Since CDH is at least as hard as DL in groups where DL is hard, solving this case requires solving DL on either $P$ or $R$.
 \end{itemize}
 
-\textbf{Case 1:} The adversary does not query $\mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$.
+Therefore, if $\mathcal{A}$ succeeds with probability $\epsilon$, then $\mathcal{B}$ succeeds in solving the discrete logarithm with the same probability $\epsilon$ (minus negligible terms from random oracle queries).
 
-Since $\mathcal{H}_1$ is a random oracle, without querying the correct input, $s_i$ appears uniformly random in $\mathbb{Z}_n$. Given $d_{tx,i} = d_i + s_i \bmod n$ where $s_i$ is unknown and uniform, the value $d_i$ is information-theoretically hidden. The adversary can succeed only by guessing among $q_H$ hash queries, with probability at most $\frac{q_H}{n}$.
+The computational time overhead of $\mathcal{B}$ is $\tau(t) = t + t_\mathsf{mul}$, where $t_\mathsf{mul}$ is the time to compute $S = r \cdot P$.
 
-\textbf{Case 2:} The adversary queries $\mathcal{H}_1(d_i \cdot R_i \,||\, R_i \,||\, \mathsf{tx}_{i-1})$.
-
-To make this query, the adversary must compute $d_i \cdot R_i = d_i r_i \cdot G$ from $P_i = d_i \cdot G$ and $R_i = r_i \cdot G$. This is precisely the Computational Diffie-Hellman (CDH) problem, which is at least as hard as the discrete logarithm problem. If the adversary can compute $d_i \cdot R_i$, they can use the discrete logarithm oracle to extract $d_i$ from $P_i$ (or $r_i$ from $R_i$), succeeding with probability at most $\text{Adv}^{\text{DL}}_{\mathcal{A}}$.
-
-Combining both cases, the adversary's advantage in recovering $d_i$ is bounded by $\text{Adv}^{\text{DL}}_{\mathcal{A}} + \frac{q_H}{n}$, which is negligible.
+By equation (\ref{eq:losebound}), the function $S_\mathsf{fwd}$ defined by
+\[
+S_\mathsf{fwd}(\epsilon) = \tau^{-1}(S(\epsilon)) = S(\epsilon) - t_\mathsf{mul}
+\]
+is a security profile of the protocol against forward privacy attacks.
 \end{proof}
 
 \subsubsection{Remarks on Standard Model}
