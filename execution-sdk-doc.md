@@ -22,16 +22,13 @@ type BlindingMask ...  ; // at least 128 bits of entropy
 ```typescript
 /**
  * TokenState represents the ownership configuration of a token
- * Corresponds to the state $(pk, h_st)$ from the paper
+ * Corresponds to the state $(pk, aux)$ from the paper
  */
 interface TokenState {
   /** Current owner's public key ($pk$ in paper) */
   ownerPublicKey: PublicKey;
 
-  /** State hash - cryptographic hash of the token state ($h_st$ in paper) */
-  stateHash: Hash;
-
-  /** Optional auxiliary data for this state ($auxd$ in paper) */
+  /** Optional auxiliary data for this state ($aux$ in paper) */
   auxiliaryData?: string; // hex-encoded bytes
 }
 
@@ -73,8 +70,8 @@ interface TransactionData {
   /** Random blinding mask for privacy and state evolution ($x$ in paper) */
   blindingMask: BlindingMask;
 
-  /** Auxiliary data for the transaction ($\auxd$ in paper) */
-  auxiliaryData: string; // hex-encoded bytes
+  /** Auxiliary data for the transaction ($aux'$ in paper) */
+  recipientAuxiliaryData: string; // hex-encoded bytes
 
   // Additional fields for mint transactions (zero/empty for transfers)
 
@@ -101,7 +98,7 @@ interface Transaction {
   currentStateHash: Hash;
 
   /** Transaction data containing recipient and other details */
-  data: TransactionData;
+  transactionData: TransactionData;
 }
 
 /**
@@ -109,9 +106,8 @@ interface Transaction {
  * In the paper: $h_tx = \commitc(H(D))$
  * With unity commitment: $h_tx = H(D)$
  */
-function calculateTransactionHash(data: TransactionData): Hash {
-  const dataBytes = encodeTransactionData(data);
-  return sha256(dataBytes);
+function calculateTransactionHash(d: TransactionData): Hash {
+  return sha256(encodeTransactionData(d));
 }
 ```
 
@@ -376,7 +372,7 @@ sequenceDiagram
 
     Note over Alice: Create transaction
     Alice->>Alice: x ← {0,1}^ℓ (random blinding mask)
-    Alice->>Alice: D = (pk', x, auxd)
+    Alice->>Alice: D = (pk', x, aux')
     Alice->>Alice: T = (sthash, D)
     Alice->>Alice: txhash = H(D)
     Alice->>Alice: σ ← Sign(sk, H(sthash, txhash))
@@ -396,19 +392,3 @@ sequenceDiagram
     Bob->>Bob: Update token state
 ```
 
-### State Transition Verification
-
-```mermaid
-flowchart TD
-    A[Receive Certified Transaction] --> B{T.sthash = current state?}
-    B -->|No| F[REJECT: Invalid state]
-    B -->|Yes| C{txhash = H(T.D)?}
-    C -->|No| G[REJECT: Invalid hash]
-    C -->|Yes| D{Valid signature?}
-    D -->|No| H[REJECT: Invalid signature]
-    D -->|Yes| E{Valid inclusion proof?}
-    E -->|No| I[REJECT: Not in Unicity Service]
-    E -->|Yes| J[ACCEPT: Update token state]
-```
-
-This specification provides the core data structures needed for implementing the Unicity protocol in TypeScript, maintaining cryptographic security while simplifying the commitment scheme as requested. The structures directly correspond to the mathematical definitions in the paper while using clear, implementable TypeScript interfaces.

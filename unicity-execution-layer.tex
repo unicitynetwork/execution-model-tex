@@ -144,7 +144,7 @@ Within this architecture, the protocol involves three entities:
 Each transaction $T = (\sthash, D)$ consists of:
 \begin{itemize}
 \item $\sthash$: the current state hash of the token being transferred
-\item $D = (\pubkey', x, \auxd)$: transaction data containing the recipient's public key $\pubkey'$, a random nonce $x$, and auxiliary data $\auxd$
+\item $D = (\pubkey', x, \auxd')$: transaction data containing the recipient's public key $\pubkey'$, a random nonce $x$, and auxiliary data of the next state $\auxd'$
 \end{itemize}
 
 \noindent To prevent information leakage, the transaction data $D$ is committed using a perfectly hiding commitment scheme, producing a transaction data hash $\txhash = \commitc(H(D))$. The sender signs $H(\sthash, \txhash)$ and submits a certification request $Q = (\pubkey, \sthash, \txhash, \sigma)$ to the Unicity Service.
@@ -550,18 +550,20 @@ We assume that the inclusion proofs $\pinc$ can be verified by any party using a
 
 \subsection{Transactions with a Token}
 
-Every token has a state hash $\sthash$ and an owner $A$ with a public key $\pubkey$. We will call the pair $(\pubkey, \sthash)$ a \emph{state} of the token.
+Every token has a state hash $\sthash = (\pubkey, \auxd)$ and an owner $A$ with a public key $\pubkey$. We will call the pair $(\pubkey, \auxd)$ a \emph{state} of the token.
 Every (unsigned) transaction with the token is a pair
 $T = (\sthash, D)$, where:
 \begin{enumerate}
 \item $\sthash$ is the state hash before executing the transaction,
-\item $D$ contains the following fields:
+\item $D$ (transaction data) contains the following fields:
 \begin{itemize}
 \item $\pubkey'$: the public key of the next owner,
 \item $x$: a uniformly chosen random string $x\gets\{0,1\}^\ell$,
-\item $\auxd$: other data of the transaction.
+\item $\auxd'$: other data for the next state.
 \end{itemize}
 \end{enumerate}
+
+The pair $(\pubkey', \auxd')$ defines the next state of the token after executing the transaction $T$.
 
 \noindent\textbf{Certifying a transaction} $T = (\sthash, D)$ involves the following steps:
 \begin{enumerate}
@@ -600,7 +602,7 @@ A certified mint transaction is $(T_0, \sigma_0, \pi_0)$, where $T_0 = (\sthash,
     \item $\pubkey'$: the public key of the first owner;
     \item $\mathsf{id}$: the token identifier;
 % \item $x$: a uniformly chosen random string $x\gets\{0,1\}^\ell$;
-    \item $\auxd$: other data of the transaction.
+    \item $\auxd'$: other data of the first state.
 \end{itemize}
 
 \noindent A Mint transaction is signed by a fixed, public keypair $(\pubkey_\mathsf{mint}, \prikey_\mathsf{mint})$. This ensures the uniqueness of every token identifier. $\mathsf{MINT\_SUFFIX}$ is a fixed domain separator.\medskip
@@ -649,7 +651,7 @@ Only one certified transaction can be created in the state $S$.
 
 \noindent In this section, we present security proofs for both the no blocking and the no double-spending properties. Security against blocking does not depend on the choice of the commitment scheme and security against double spending assumes computational binding of the commitment scheme.
 
-Therefore, both proofs are also valid if the commitment scheme is trivial (i.e. $\txhash = H(D)=H(\pubkey',x,\auxd)$) because the trivial commitment scheme is perfectly (and hence also computationally) binding. Later when we prove the privacy properties, we have to assume that the commitment scheme is perfectly hiding.
+Therefore, both proofs are also valid if the commitment scheme is trivial (i.e. $\txhash = H(D)=H(\pubkey',x,\auxd')$) because the trivial commitment scheme is perfectly (and hence also computationally) binding. Later when we prove the privacy properties, we have to assume that the commitment scheme is perfectly hiding.
 
 
 
@@ -854,7 +856,7 @@ $T_1=(\sthash,D_1)$ and $T_2=(\sthash,D_2)$ with $T_1.D.\pubkey'\neq T_2.D.\pubk
 
 Unicity service $\unisrv$ obtains information about the transactions $T=(\sthash,D)$ with tokens via the queries $Q=(\pubkey, \sthash, \txhash,\sigma)$. We want to ensure that $\unisrv$ does not learn too much about the contents and context of transactions, for example, which transaction belongs to which token.
 
-Assume that a token is currently in the state $(\pubkey,\sthash)$ and the next transaction with the token is $T=(\sthash, D)$, where $D=(\pubkey',x,\mathsf{aux})$. To certify $T$, the query
+Assume that a token is currently in the state $(\pubkey,\sthash)$ and the next transaction with the token is $T=(\sthash, D)$, where $D=(\pubkey',x,\auxd')$. To certify $T$, the query
 $Q=(\pubkey,\sthash,\txhash,\sigma)$ is sent to $\unisrv$ where $\txhash=\commitc(H(D))$ and $\sigma = \sig(\prikey; H(\sthash,\txhash))$.
 Assume that $\unisrv$ stores the transaction $Q$.
 In the future, the next transaction $T'=(\sthash',D')$ will be executed with the same token and the query
@@ -876,10 +878,10 @@ Association adversary $A=(A_1,A_2)$ is two-stage. \medskip
 
 \noindent\textbf{Association scenario} involves the following steps:
 \begin{enumerate}
-\item $(\sthash, \pubkey', \auxd, a)\gets A_1$.
+\item $(\sthash, \pubkey', \auxd', a)\gets A_1$.
 \item $x\gets \{0,1\}^\ell$.
 \item $\sthash'\gets H(\sthash,x)$.
-\item $\txhash\gets\commitc(H(\pubkey',x,\auxd)))$.
+\item $\txhash\gets\commitc(H(\pubkey',x,\auxd')))$.
 \item $x'\gets A_2(a; \sthash',\txhash)$.
 \item The attack is successful iff $\sthash\in\{0,1\}^k$, $x'\in\{0,1\}^\ell$, and $H(\sthash,x')=\sthash'$. The success $\epsilon$ of $A$ is the probability that the attack is successful
 \end{enumerate}
@@ -896,30 +898,30 @@ $t_\mathsf{sm}$, $t_\mathsf{hash}$, $t_\mathsf{com}$ are the random sampling tim
 \begin{proof}
 Let $A=(A_1,A_2)$ be a $t$-time adversary that succeeds in the association scenario with probability $\epsilon$. Consider the following modified attack scenario:
 \begin{enumerate}
-\item $(\sthash, \pubkey', \auxd, a)\gets A_1$.
+\item $(\sthash, \pubkey', \auxd', a)\gets A_1$.
 \item $x\gets \{0,1\}^\ell$.
 \item $\sthash'\gets H(\sthash,x)$.
 \item $x''\gets \{0,1\}^\ell$.
-\item $\txhash'\gets\commitc(H(\pubkey',x'',\auxd)))$.
+\item $\txhash'\gets\commitc(H(\pubkey',x'',\auxd')))$.
 \item $x'\gets A_2(a; \sthash',\txhash')$.
 \item The attack is successful iff $\sthash\in\{0,1\}^k$, $x'\in\{0,1\}^\ell$, and $H(\sthash,x')=\sthash'$.
 \end{enumerate}
-%For any fixed value of $L=(\sthash, \pubkey', \auxd, a)$, due to the perfect hiding, the probability distributions of $\txhash$ and $\txhash'$ are equal and due to Lemma~\ref{le:outputindependence} (by taking $g(x)=H(\pubkey',x,\auxd))$), the random variables $\txhash$ and $\txhash'$ are both independent of $x$. This means that the arguments $(\sthash',\txhash)$ and $(\sthash',\txhash')$ of $A(a;\cdot)$ are equal
+%For any fixed value of $L=(\sthash, \pubkey', \auxd', a)$, due to the perfect hiding, the probability distributions of $\txhash$ and $\txhash'$ are equal and due to Lemma~\ref{le:outputindependence} (by taking $g(x)=H(\pubkey',x,\auxd'))$), the random variables $\txhash$ and $\txhash'$ are both independent of $x$. This means that the arguments $(\sthash',\txhash)$ and $(\sthash',\txhash')$ of $A(a;\cdot)$ are equal
 %in both scenarios, and hence $A$ succeeds in the modified scenario with probability $\epsilon$. We construct an adversary $A'=(A'_1,A'_2)$ as follows:
 
-\noindent For any fixed value of $L=(\sthash, \pubkey', \auxd, a)$, due to perfect hiding, the commitments $\txhash=\commitc(H(\pubkey',x,\auxd))$ and $\txhash'=\commitc(H(\pubkey',x'',\auxd))$ have equal probability distributions. Moreover, by Lemma~\ref{le:outputindependence} (with $g(x)=H(\pubkey',x,\auxd)$), the random variables $x$ and $\txhash=\commitc(H(\pubkey',x,\auxd))$ are independent.
+\noindent For any fixed value of $L=(\sthash, \pubkey', \auxd', a)$, due to perfect hiding, the commitments $\txhash=\commitc(H(\pubkey',x,\auxd'))$ and $\txhash'=\commitc(H(\pubkey',x'',\auxd'))$ have equal probability distributions. Moreover, by Lemma~\ref{le:outputindependence} (with $g(x)=H(\pubkey',x,\auxd')$), the random variables $x$ and $\txhash=\commitc(H(\pubkey',x,\auxd'))$ are independent.
 
-Since $x''$ and $x$ are independent, the commitment $\txhash'=\commitc(H(\pubkey',x'',\auxd))$ is independent of both $x$ and $\sthash'=H(\sthash,x)$. Therefore, the joint distributions of $(\sthash',\txhash)$ and $(\sthash',\txhash')$ are equal, and hence $A$ succeeds in the modified scenario with probability $\epsilon$. We construct an adversary $A'=(A'_1,A'_2)$ as follows:
+Since $x''$ and $x$ are independent, the commitment $\txhash'=\commitc(H(\pubkey',x'',\auxd'))$ is independent of both $x$ and $\sthash'=H(\sthash,x)$. Therefore, the joint distributions of $(\sthash',\txhash)$ and $(\sthash',\txhash')$ are equal, and hence $A$ succeeds in the modified scenario with probability $\epsilon$. We construct an adversary $A'=(A'_1,A'_2)$ as follows:
 \begin{itemize}
 \item $A'_1$ proceeds as follows:
 \begin{enumerate}
-\item $(\sthash, \pubkey', \auxd, a)\gets A_1$;
-\item return $(\sthash, a')$, where $a'=(\pubkey', \auxd, a)$.
+\item $(\sthash, \pubkey', \auxd', a)\gets A_1$;
+\item return $(\sthash, a')$, where $a'=(\pubkey', \auxd', a)$.
 \end{enumerate}
-\item $A'_2(a';y)$ with $a'=(\pubkey', \auxd, a)$ proceeds as follows:
+\item $A'_2(a';y)$ with $a'=(\pubkey', \auxd', a)$ proceeds as follows:
 \begin{enumerate}
 \item $x''\gets \{0,1\}^\ell$;
-\item $\txhash'\gets\commitc(H(\pubkey',x'',\auxd)))$;
+\item $\txhash'\gets\commitc(H(\pubkey',x'',\auxd')))$;
 \item $x'\gets A_2(a; y,\txhash')$;
 \item return $x'$.
 \end{enumerate}
@@ -934,10 +936,10 @@ is a security profile of the Unicity service against association.
 
 \subsection{Discussion}
 
-The security proofs against blocking and double spending are also valid in case when the commitment scheme is omitted from the construction and the transaction data hash is computed by $\txhash = H(\pubkey',x,\auxd)$.
+The security proofs against blocking and double spending are also valid in case when the commitment scheme is omitted from the construction and the transaction data hash is computed by $\txhash = H(\pubkey',x,\auxd')$.
 At the same time, there seem to be no obvious ways of proving that such a simplified scheme is secure against association.
 
-Still, it may be a plausible practical assumption that given $\sthash$ and the next state hash $\sthash'=H(\sthash,x)$ and $\txhash = H(\pubkey',x,\auxd)$ it is infeasible to find $x'$ so that $H(\sthash,x')=\sthash'$. At least for example, if $H$ is \textsf{SHA-256}, there seem to be no obvious ways how to do it if $x$ has sufficiently many random bits.
+Still, it may be a plausible practical assumption that given $\sthash$ and the next state hash $\sthash'=H(\sthash,x)$ and $\txhash = H(\pubkey',x,\auxd')$ it is infeasible to find $x'$ so that $H(\sthash,x')=\sthash'$. At least for example, if $H$ is \textsf{SHA-256}, there seem to be no obvious ways how to do it if $x$ has sufficiently many random bits.
 
 \section{User Side Privacy}
 
@@ -1203,7 +1205,7 @@ In \cite{Bell15}, Bellare proved that HMAC is a PRF if the compression function 
 
 \subsection{A Solution for ECDSA}
 
-Unlike the rest of the paper which is not signature scheme specific, we are assuming the ECDSA signature scheme in the following subsections, and using the ECDSA, DH specific notation.
+Unlike the rest of the paper which is not signature scheme specific, we are assuming the ECDSA signature scheme\cite{ecdsa} in the following subsections, and use the ECDSA, DH specific notation.
 
 \subsubsection{Interactive Protocol}
 
@@ -1238,7 +1240,7 @@ $\mathsf{tx} \gets \{P_{tx}, R, \ldots\}$  & &  \\
 \label{fig:protocol1}
 \end{figure}
 
-The recipient maintains only the persistent secret $d$ and derives ephemeral signing keys deterministically from metadata $R$, included in the auxiliary data $\auxd$ of the transaction. When spending the token, the recipient reconstructs the blinding factor $r' = H(d \,||\, R)$ and derives the private key $d' = d + r' \bmod n$ corresponding to $P'$.
+The recipient maintains only the persistent secret $d$ and derives ephemeral signing keys deterministically from data field $R$, included with the transaction. When spending the token, the recipient reconstructs the blinding factor $r' = H(d \,||\, R)$ and derives the private key $d' = d + r' \bmod n$ corresponding to $P'$.
 
 \subsubsection{Non-Interactive Protocol}
 
@@ -1433,12 +1435,20 @@ Under the DDH assumption, the value $r \cdot P$ is pseudorandom (given $r \cdot 
 With this adjustment, the proofs can be adapted to the standard model by replacing random oracle arguments with PRF indistinguishability under DDH, at the cost of slightly more complex security reductions and stronger assumptions on the randomness extractor properties.
 
 
+\include{unicity-programming}
+
+
 \begin{thebibliography}{99}
 \bibitem{Bell15} Bellare, M.: New proofs for NMAC and HMAC: Security without collision resistance.  \emph{Journal of Cryptology} 28, 844--878 (2015)
 
 \bibitem{BeCK96}
 Bellare, M., Canetti, R., Krawczyk, H.: Keying hash functions for message authentication.
 In: Koblitz, N. (Ed.) CRYPTO’96. LNCS 1109, pp. 1--15 (1996)
+
+\bibitem{ecdsa}
+Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature algorithm (ECDSA). In: International journal of information security, 1(1), pp. 36--63 (2001)
+% http://cacr.uwaterloo.ca/techreports/1999/corr99-34.pdf
+
 \end{thebibliography}
 
 \pagebreak
@@ -1466,7 +1476,7 @@ In: Koblitz, N. (Ed.) CRYPTO’96. LNCS 1109, pp. 1--15 (1996)
             \postlevel
             \begin{call}{S}{\shortstack[l]{
                     $x \gets \{0,1\}^\ell$     \\
-                    $D = (\pubkey', x, \auxd)$ \\
+                    $D = (\pubkey', x, \auxd')$ \\
                     $T = (\sthash, D)$         \\
                     $(\txhash, d) \gets \commit(H(D))$ \\
                     $h_T = H(\sthash, \txhash)$ \\
