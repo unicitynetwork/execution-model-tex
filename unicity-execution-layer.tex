@@ -86,7 +86,7 @@ The contributions of this paper include: (1) a formal security model for off-cha
 
 Traditional blockchain architectures, illustrated in Figure~\ref{fi:traditional}, require every validator node to process all transactions sequentially. This design creates several fundamental bottlenecks: (1) \emph{computational overhead} from validating every transaction, (2) \emph{storage requirements} that grow linearly with transaction history, and (3) \emph{bandwidth limitations} from broadcasting all transaction data to every node. These constraints result in throughput limitations measured in tens of transactions per second for major blockchain networks, and transaction processing latency (time to finality) which is not suitable for interactive use cases.
 
-Existing scaling approaches attempt to optimize within these architectural constraints. Layer-2 solutions batch transactions but still require periodic settlement on the main chain. Sharding distributes computation but introduces complex cross-shard communication protocols. Both approaches face fundamental trade-offs between decentralization, security, and scalability.
+Existing scaling approaches attempt to optimize within these architectural constraints. Layer-2 solutions batch transactions but still require periodic settlement on the main chain. Sharding distributes computation, but introduces complex cross-shard communication protocols. Both approaches face fundamental trade-offs between decentralization, security, and scalability.
 
 Unicity takes a fundamentally different approach by recognizing that most blockchain operations can be moved off-chain and performed by the party who is naturally interested in the validity of the transaction, the recipient (relying party). The key insight is that central coordination is required only to prevent double-spending---the creation of multiple valid transactions spending the same digital asset. Other functions, including transaction execution, smart contract processing, state updates, and data availability, can be provided by interested parties without global agreement.
 
@@ -134,7 +134,7 @@ Within this architecture, the protocol involves three entities:
 \begin{itemize}
 \item \textbf{Token Owners} possess digital assets represented as tokens with unique state hashes. Owners sign transactions to transfer ownership and request certification from the Aggregation Layer.
 
-\item \textbf{Unicity Service} (provided by the Aggregation Layer) maintains a data store, modeled in this paper as key-value store $R$ where keys are derived from public keys and state hashes, and values are transaction hashes. The service accepts certification requests and provides inclusion proofs for registered transactions.
+\item \textbf{Unicity Service} (provided by the Aggregation Layer) maintains a data store, modeled in this paper as key-value store $R$ where keys are derived from public keys and state hashes, and the values are transaction hashes. The service accepts certification requests and provides inclusion proofs for registered transactions.
 
 \item \textbf{Recipients} are the relying parties who receive token transfers and must verify the authenticity of transactions cryptographically before accepting ownership.
 \end{itemize}
@@ -153,7 +153,7 @@ Each transaction $T = (\sthash, D)$ consists of:
 
 The Unicity Service processes certification requests by checking that (1) the digital signature is valid and (2) the key $H(\pubkey, \sthash)$ has not been previously registered. If both conditions hold, the service records the mapping $R[H(\pubkey, \sthash)] \gets \txhash$ and returns an inclusion proof $\pinc$. This mechanism ensures that each token state can be spent at most once.
 
-Transaction flow is illustrated by the Sequence diagram (Fig.~\ref{fi:unicity-transaction}).
+The transaction flow is illustrated by the sequence diagram (Fig.~\ref{fi:unicity-transaction}).
 
 \begin{figure}[htb]
     \begin{center}
@@ -209,17 +209,17 @@ In the paper, we only use \emph{finite probability spaces} that are defined as p
 \item $\prob(A\cup B)=\prob(A) + \prob(B)$ for every $A,B\subseteq \Omega$ with $A\cap B=\emptyset$
 \end{enumerate}
 
-\noindent The set $\Omega$ is called the \emph{sample set} and $\prob$ is called the \emph{probability function}. The subsets of $\Omega$ are called \emph{events}. For the probability $\prob[\{\omega\}]$ of a singleton subset we use shorthand notation $\prob[\omega]$.
-By a \emph{random variable} we mean any function $X\colon \Omega \rightarrow R$ where $R$ is called the \emph{range} of the random variable. If $x\in R$ we use the notation $\prob[X=x] = \prob[X^{-1}(x)]$, where $X^{-1}(x)=\{\omega\in\Omega\colon X(\omega)=x\}$ is the $X$-preimage of $x$.
+\noindent The set $\Omega$ is called \emph{sample set} and $\prob$ is called \emph{probability function}. The subsets of $\Omega$ are called \emph{events}. For the probability $\prob[\{\omega\}]$ of a singleton subset, we use the shorthand notation $\prob[\omega]$.
+By \emph{random variable} we mean any function $X\colon \Omega \rightarrow R$ where $R$ is called the \emph{range} of the random variable. If $x\in R$ we use the notation $\prob[X=x] = \prob[X^{-1}(x)]$, where $X^{-1}(x)=\{\omega\in\Omega\colon X(\omega)=x\}$ is the $X$-preimage of $x$.
 
 As $\Omega$ is finite, we can express the probability $\prob(A)$ of any event $A$ as the sum $\prob[A]=\sum_\omega \prob[w]\cdot [w\in A]$, where
 $[w\in A]$ is the \emph{Iverson symbol}, i.e. $[w\in A]\in\{0,1\}$ and $[w\in A]=1$ iff $w\in A$. We also use Iverson symbol in a more general case for any mathematical statements $\mathcal{A}$ so that $[\mathcal{A}]=1$ iff $\mathcal{A}$ holds. For example, $\prob[X=x]=\sum_\omega \prob[w]\cdot [X(w)=x]$. Note that $[\mathcal{A}\wedge \mathcal{B}]=[\mathcal{A}]\cdot[\mathcal{B}]$ for any two statements
 $\mathcal{A}$ and $\mathcal{B}$.
 
-By the \emph{probability distribution} of a random variable $X\colon \Omega \rightarrow R$ we mean the function $\mathcal{D}_X\colon R\rightarrow [0,1]$ such that $\mathcal{D}_X(x)=\prob[X=x]$ for every $x\in R$.
+By \emph{probability distribution} of a random variable $X\colon \Omega \rightarrow R$ we mean the function $\mathcal{D}_X\colon R\rightarrow [0,1]$ such that $\mathcal{D}_X(x)=\prob[X=x]$ for every $x\in R$.
 If $\mathcal{D}_X$ is a constant, i.e.
 $\mathcal{D}_X(x)=\frac{1}{|R|}$ for every $x\in R$, then we say that the distribution is \emph{uniform}.
-We use the notation $X\gets R$ to denote that $X$ is a uniformly distributed random variable with range $R$ and also say that $X$ is \emph{uniformly sampled} from $R$.
+We use the notation $X\gets R$ to denote that $X$ is a uniformly distributed random variable with range $R$ and also to say that $X$ is \emph{uniformly sampled} from $R$.
 A random variable $X\colon \Omega \rightarrow R$ is \emph{$t$-time sampleable} if there is a $t$-time probabilistic Turing machine $\mathsf{M}$
 with all outputs values in $R$ and every output value $x\gets \mathsf{M}$ occurs with probability $\mathcal{D}_X(x)$, i.e. the output distribution of
 $\mathsf{M}$ is $\mathcal{D}_X$.
@@ -238,7 +238,7 @@ If $(\Omega_1,\prob_1)$ and $(\Omega_2,\prob_2)$ are probability spaces, then th
 
 \subsection{Security and Security Proofs}
 
-A \emph{cryptographic primitive} is described as a list of (parametrized) algorithms, correctness conditions (invariants) and attack scenarios. Adversaries are algorithms that participate in the security scenarios (interacting with environment) and break (are successful in the attack scenario of) the primitive with certain \emph{success} (\emph{advantage}) $\epsilon\in[0,1]$, which often is the probability of a certain logical condition about the attack scenario.
+A \emph{cryptographic primitive} is described as a list of (parametrized) algorithms, correctness conditions (invariants), and attack scenarios. Adversaries are algorithms that participate in the security scenarios (interacting with environment) and break (are successful in the attack scenario of) the primitive with certain \emph{success} (\emph{advantage}) $\epsilon\in[0,1]$, which often is the probability of a certain logical condition about the attack scenario.
 If the parameters of a cryptographic primitive are fixed, we get an \emph{instance} of the primitive.
 
 Every instance $f$ of a primitive has \emph{security profile}
@@ -250,7 +250,7 @@ Sometimes an instance of a cryptographic primitive $g$ is constructed from insta
 A \emph{security reduction} (or \emph{security proof}) is a mathematical proof that the constructed primitive $g$ hash a security profile $S_g$
 based on the security profiles $S_{f_1}, \ldots, S_{f_m}$ of $f_1, \ldots, f_m$, respectively.
 
-Usually, in such a proof it is assumed that there is an adversary $A$ with running time $t$ that breaks $g$ with success $\epsilon$ and then the adversaries $A_1,\ldots, A_m$ are constructed based on $A$ that break $f_1,\ldots,f_m$ with (some unknown) successes  $\epsilon_1,\ldots,\epsilon_m$, respectively so that the inequality $\epsilon\le \epsilon_1 + \ldots + \epsilon_m$ holds.
+Usually, in such a proof, it is assumed that there is an adversary $A$ with running time $t$ that breaks $g$ with success $\epsilon$ and then the adversaries $A_1,\ldots, A_m$ are constructed based on $A$ that breaks $f_1,\ldots,f_m$ with (some unknown) successes $\epsilon_1,\ldots,\epsilon_m$, respectively, so that inequality $\epsilon\le \epsilon_1 + \ldots + \epsilon_m$ holds.
 
 Mostly, $A_1, \ldots, A_m$ use $A$ as black-box, i.e. either call or simulate $A$ and add some computational instructions. In this paper, we only have reductions where $A$ is called only once by every $A_i$ i.e. the running times of $A_1,\ldots,A_m$ are upper-bounded by $\tau_1(t), \ldots, \tau_m(t)$, respectively, where $\tau_i$ is the computational time overhead function for constructing $A_i$ from $A$.
 Therefore, we have inequalities:
@@ -268,7 +268,7 @@ Equation (\ref{eq:lower}) implies a simpler but weaker profile $S'_g$:
 S'_g(\epsilon) = S_\mathsf{min}(\epsilon /m) =
  \min\{\tau^{-1}_1(S_{f_1}(\epsilon/m)), \ldots, \tau^{-1}_m(S_{f_m}(\epsilon/m))\}\enspace.
 \]
-Moreover, if $\tau(t)=\max\{\tau_1(t), \ldots, \tau_m(t)\}$ and $S_\mathsf{min}(\epsilon)= \min\{S_{f_1}(\epsilon), \ldots, S_{f_m}(\epsilon)\}$ then we have even simpler security profile $S''_g$ for $g$ defined by:
+Moreover, if $\tau(t)=\max\{\tau_1(t), \ldots, \tau_m(t)\}$ and $S_\mathsf{min}(\epsilon)= \min\{S_{f_1}(\epsilon), \ldots, S_{f_m}(\epsilon)\}$ then we have an even simpler security profile $S''_g$ for $g$ defined by:
 \begin{equation}\label{eq:losebound}
 S''_g(\epsilon) = \tau^{-1}(S_\mathsf{min}(\epsilon/m))\enspace.
 \end{equation}
@@ -300,7 +300,7 @@ The success $\epsilon$ of $A$ is the probability that the attack is successful.
 
 \subsection{One-Way Functions}
 
-Let $f\colon X \rightarrow Y$ be any function from a range $X$ to a domain $Y$.
+Let $f\colon X \rightarrow Y$ be any function from the range $X$ to a domain $Y$.
 
 \begin{definition}[one-wayness]
 A function $f$ is $S$-secure one-way if it has $S$ as a security profile in the following attack scenario:
@@ -340,7 +340,7 @@ is $S$-secure $(k,\ell)-$\emph{one-way} if it has $S$ as a security profile in t
 \item $x \gets \{0,1\}^\ell$;
 \item $x'\gets A_2(a;H(h,x))$;
 \item The attack is successful iff $h\in\{0,1\}^k$, $x'\in\{0,1\}^\ell$ and $H(h,x)=H(h,x')$.
-The success $\epsilon$ of $A$ is the probability that the attack is successful
+The success $\epsilon$ of $A$ is the probability that the attack is successful.
 \end{enumerate}
 \end{definition}
 
@@ -360,7 +360,7 @@ so that for every $m$, the following correctness identity holds:
 m=\open(\param; \commit(\param; m))\enspace.
 \]
 We denote by $\commitc(\param,m)$ the function that computes $(c,d)\gets \commit(\param; m)$ and returns $c$.
-We will often omit the parameter $\param$ and use shorthand notations $\commit(m)$, $\commitc(m)$ and $\open(c,d)$ instead of $\commit(\param; m)$,
+We will often omit the parameter $\param$ and use the shorthand notations $\commit(m)$, $\commitc(m)$ and $\open(c,d)$ instead of $\commit(\param; m)$,
 $\commitc(\param; m)$ and $\open(\param; c, d)$, respectively.
 \medskip
 
@@ -373,7 +373,7 @@ In the trivial commitment scheme $(\setup,\commit,\open)$ the functions are defi
 \end{itemize}
 \end{definition}
 
-\noindent In terms of security, commitment schemes are required to be \emph{binding} and \emph{hiding}. Binding property means that once the commitment $c$ is fixed, it is not possible (or is very hard) to open it in two different ways. Hiding property means that the commitment $c$ must not contain efficiently extractable information about the committed message.
+\noindent In terms of security, the commitment schemes are required to be \emph{binding} and \emph{hiding}. The Binding property means that once the commitment $c$ is fixed, it is not possible (or very hard) to open it in two different ways. The Hiding property means that the commitment $c$ must not contain efficiently extractable information about the committed message.
 
 \subsubsection{Binding}
 
@@ -396,7 +396,7 @@ A commitment scheme $(\setup, \commit, \open)$ is said to be perfectly hiding if
 \end{definition}
 
 \begin{lemma}[output independence]\label{le:outputindependence}
-If $(\setup, \commit, \open)$ is perfectly hiding commitment scheme, $m$ is chosen according to any probability distribution and $g$ is any deterministic function, then $m$ and $\commitc(g(m))$ are independent random variables.
+If $(\setup, \commit, \open)$ is a perfectly hiding commitment scheme, $m$ is chosen according to any probability distribution and $g$ is any deterministic function, then $m$ and $\commitc(g(m))$ are independent random variables.
 \end{lemma}
 \begin{proof}
 Let $\omega \gets \Omega$ be the internal randomness sampling of $\commitc$. We denote by $\commitc_\omega$ the deterministic version of $\commitc$ where the internal random string $\omega$ is fixed. Let $\mathcal{M}$ denote the sampling space of $m$. We assume that the sampling $\mu\gets \mathcal{M}$ happens independently of $\omega \gets \Omega$ and hence, the total sampling space is a direct product space with sampling space $\mathcal{M}\times \Omega$ and $\prob[\mu,\omega]=\prob[\mu]\cdot \prob[\omega]$ for any values $\mu, \omega$.
@@ -413,7 +413,7 @@ We have to show that $\prob[M=m,C=c] = \prob[M=m]\cdot \prob[C=c]$ in this proba
 &=& \prob[\commit_\omega(g(M(\mu,\omega)))=c]\cdot \sum_{\mu}\prob[\mu]\cdot[g(M(\mu,\omega))=m]\\
 &=& \prob[\commitc_\omega(g(M(\mu,\omega)))=c]\cdot \prob[M=m]
 \end{eqnarray*}
-because $p = \prob[\commitc_\omega(g(M(\mu,\omega)))=c]$ does not depend neither on $\mu$ due to the perfect hiding property, nor on $\omega$. Moreover:
+because $p = \prob[\commitc_\omega(g(M(\mu,\omega)))=c]$ does depend neither on $\mu$ due to the perfect hiding property, nor on $\omega$. Moreover:
 \begin{eqnarray*}
 p &=& \prob[\commitc(g(M(\mu,\omega)))=c] \cdot \overbrace{\sum_{\mu'} \prob[\mu']}^{=1}\\
 &=& \sum_{\mu'} \prob[\mu']\cdot \prob[\commitc(g(M(\mu,\omega)))=c]\\
@@ -426,7 +426,7 @@ that proves the claim.
 
 \subsection{Perfectly Hiding Commitments and One-Wayness}
 
-Let $f$ be a one way function and $(\setup, \commit, \open)$ be a perfectly hiding commitment scheme. We will show, that $f$ remains hard to invert even if, in addition to the image $f(x)$, the adversary also know the commitment $\commitc(x)$. The following lemma shows that knowing $\commitc(x)$ does not help the adversary (much) in inverting a one-way function.
+Let $f$ be a one way function and $(\setup, \commit, \open)$ be a perfectly hiding commitment scheme. We will show that $f$ remains hard to invert even if, in addition to the image $f(x)$, the adversary also knows the commitment $\commitc(x)$. The following lemma shows that knowing $\commitc(x)$ does not help the adversary (much) in inverting a one-way function.
 
 \begin{lemma}
 If $f$ is $S_f$-secure one-way and $(\setup, \commit, \open)$ is a perfectly hiding commitment scheme, then $f$ is $S'_f$-secure in the following attack scenario:
@@ -455,7 +455,7 @@ the joint distributions of $(f(x),\commit(x))$ and $(f(x),\commit(x''))$ are equ
 \item return $A(y,c)$.
 \end{enumerate}
 
-\noindent The adversary $A'$ inverts $f$ with probability $\epsilon$ and has running time $t+t_\mathsf{sm} + t_\mathsf{com}$. Therefore, $t+t_\mathsf{sm} + t_\mathsf{com}\ge S_f(\epsilon)$ and hence $t\ge S_f(\epsilon)- t_\mathsf{sm} - t_\mathsf{com}$.
+\noindent The adversary $A'$ inverts $f$ with probability $\epsilon$ and has a running time $t+t_\mathsf{sm} + t_\mathsf{com}$. Therefore, $t+t_\mathsf{sm} + t_\mathsf{com}\ge S_f(\epsilon)$ and hence $t\ge S_f(\epsilon)- t_\mathsf{sm} - t_\mathsf{com}$.
 \end{proof}
 \medskip
 
@@ -497,7 +497,7 @@ Unicity infrastructure is about maintaining identifiable digital assets called \
 
 \emph{Parties} can \emph{create (issue)} tokens, \emph{own} tokens, and \emph{transfer} tokens to each other, i.e. the ownership of tokens may change. In order to transfer a token, its owner makes a signed \emph{transaction} that redefines the ownership.
 
-We assume that transferred tokens can be sent using any channels and their storage does not require dedicated hardware devices. At the same time, the infrastructure has to guarantee some properties of the tokens such as \emph{unique ownership}, i.e. the owner of a token should not be able to transfer the token to two different parties (i.e. \emph{double-spend} the token) and once a token has been transferred, neither the previous owner nor any third parties should be able to do anything with the token---transfer it or make it unusable for the next owner (i.e. \emph{block} the token).
+We assume that transferred tokens can be sent using any channels and their storage does not require dedicated hardware devices. At the same time, the infrastructure has to guarantee some properties of the tokens such as \emph{unique ownership}, i.e. the owner of a token should not be able to transfer the token to two different parties (i.e. \emph{double-spend} the token), and once a token has been transferred, neither the previous owner nor any third parties should be able to do anything with the token---transfer it or make it unusable for the next owner (i.e. \emph{block} the token).
 
 As nothing prevents copying of digital information, some additional components are needed in the infrastructure to guarantee the desired properties of tokens. For this, the Unicity infrastructure includes the \emph{Unicity Service}---an online functionality that all parties can communicate with.
 
@@ -636,7 +636,7 @@ A \emph{token ledger} is a sequence
 \]
 where $(T_0, \sigma_0, \pi_0)$ is a certified mint transaction and for every index $i=1,\ldots, n$:
 \begin{enumerate}
-\item $(T_{i}, \sigma_{i}, \txhash^i,d_i, \pi_{i})$ is a certified transaction in the state $(T_{i-1}.D.\pubkey', h^{i-1}_\mathsf{st})$;
+\item $(T_{i}, \sigma_{i}, \txhash^i,d_i, \pi_{i})$ is a certified transaction in the state $(T_{i-1}.D.\pubkey', \auxd^{i-1})$;
 \item $h^{i}_\mathsf{st}=H(h^{i-1}_\mathsf{st},x_{i-1})$ where $x_{i-1} =T_{i-1}.D.x$.
 \end{enumerate}
 
@@ -680,7 +680,7 @@ The success $\epsilon$ of $A$ is the probability that the attack is successful
 The Unicity Service is said to be $S$-secure against blocking if it has $S$ as a security profile in the blocking scenario.
 \end{definition}
 
-\noindent\textbf{Anaysis}: The adversary $A$ can be successful in the following cases:
+\noindent\textbf{Analysis}: The adversary $A$ can be successful in the following cases:
 \begin{itemize}
 \item[a)] A request $Q=(\pubkey', h'_\mathsf{st}, h_\mathsf{tx}, \sigma)$ with $(\pubkey',h'_\mathsf{st})\neq (\pubkey,h_\mathsf{st})$ to $\mathsf{US}$ enforces $R[H(\pubkey, h_\mathsf{st})]\neq\bot$, which means that  $H(\pubkey,h_\mathsf{st})=H(\pubkey', h'_\mathsf{st})$ and hence, a collision for $H$ was found.
 \item[b)] A request $Q=(\pubkey, h_\mathsf{st}, h_\mathsf{tx}, \sigma)$ to $\mathsf{US}$ enforces $R[H(\pubkey, h_\mathsf{st})]\neq\bot$, which implies $\mathsf{V}(\pubkey, H(h_\mathsf{st},h_\mathsf{tx}), \sigma)=1$ from the description of $\mathsf{US}$. Then we have two possibilities:
@@ -736,7 +736,7 @@ The oracles are simulated as follows:
 $t_\mathsf{ver}$ is the signature verification time (for $\unisrv$ queries) and
 $t_\mathsf{hash}$ is the hash computation time (for output).
 \end{itemize}
-If $A$ succeeds, then either $A_\mathsf{coll}$ or $A_\mathsf{ex}$ succeds and hence $\epsilon \le \epsilon_\mathsf{coll} + \epsilon_\mathsf{ex}$.
+If $A$ succeeds, then either $A_\mathsf{coll}$ or $A_\mathsf{ex}$ succeeds and hence $\epsilon \le \epsilon_\mathsf{coll} + \epsilon_\mathsf{ex}$.
 Assuming that $t_\mathsf{hash}\le t_\mathsf{gen}$, the inequality
 $\tau_\mathsf{ex}(t)\le \tau_\mathsf{coll}(t)$ holds and hence by equation (\ref{eq:losebound})
 \[
@@ -763,7 +763,7 @@ A double-spending adversary uses $\unisrv$ as an oracle. \medskip
 The Unicity Service is said to be $S$-secure against double-spending if it has $S$ as a security profile in the double-spending scenario.
 \end{definition}
 
-\noindent\textbf{Anaysis}: If the adversary is successful, then
+\noindent\textbf{Analysis}: If the adversary is successful, then
 from (\ref{eq:dscond}) and the definition of $\certver$ it follows that
 $T.\sthash = T'.\sthash=h$ and:
 \begin{eqnarray*}
@@ -815,7 +815,7 @@ is a security profile of the Unicity service against double-spending.
 
 \subsubsection{State Hash not Signed}
 
-Consider the following modification of $\mathsf{US}$ that given a request $Q=(\pubkey, h_\mathsf{st}, h_T, \sigma)$ proceeds as follows:
+Consider the following modification of $\mathsf{US}$ that, given a request $Q=(\pubkey, h_\mathsf{st}, h_T, \sigma)$ proceeds as follows:
 \begin{enumerate}
 \item If $R[H(\pubkey, h_\mathsf{st})]=\bot$ and $\sigver(\pubkey, h_T, \sigma)=1$ then $R[H(\pubkey, h_\mathsf{st})]\gets h_T$.
 \item Return a proof $\pi$ of the statement $R[H(\pubkey, h_\mathsf{st})]=h_T$.
@@ -858,11 +858,11 @@ Unicity service $\unisrv$ obtains information about the transactions $T=(\sthash
 
 Assume that a token is currently in the state $(\pubkey,\sthash)$ and the next transaction with the token is $T=(\sthash, D)$, where $D=(\pubkey',x,\auxd')$. To certify $T$, the query
 $Q=(\pubkey,\sthash,\txhash,\sigma)$ is sent to $\unisrv$ where $\txhash=\commitc(H(D))$ and $\sigma = \sig(\prikey; H(\sthash,\txhash))$.
-Assume that $\unisrv$ stores the transaction $Q$.
+Assume that $\unisrv$ stores the query $Q$.
 In the future, the next transaction $T'=(\sthash',D')$ will be executed with the same token and the query
 $Q'=(\pubkey',\sthash',\txhash',\sigma')$ with $\sthash'=H(\sthash,x)$ will be received by $\unisrv$.
 
-We do not want $\unisrv$ to be able to associate $Q$ and $Q'$ as two consecutive transactions with the same token. Such association is possible if $\unisrv$ somehow obtains the random $x$ included into the transaction $T$, because $\unisrv$ can then check that $H(\sthash,x)=\sthash'=f_{\sthash}(x)$. There are several ways how to find $x$:
+We do not want $\unisrv$ to be able to associate $Q$ and $Q'$ as two consecutive transactions with the same token. Such association is possible if $\unisrv$ somehow obtains the random $x$ included in the transaction $T$, because $\unisrv$ can then check that $H(\sthash,x)=\sthash'=f_{\sthash}(x)$. There are several ways how to find $x$:
 \begin{itemize}
 \item Invert the function $f_{\sthash}(\cdot)=H(\sthash,\cdot)$, i.e. find $x'$ such that $f_{\sthash}(x')=\sthash'$ and hope that $x'=x$. To prevent that, we may assume that the hash function $H$ is $(k,\ell)$-one-way.
 \item Find $x$ based on the commitment $\txhash=\commitc(D)$. To prevent that, we may assume that the commitment scheme is computationally hiding.
@@ -870,11 +870,11 @@ We do not want $\unisrv$ to be able to associate $Q$ and $Q'$ as two consecutive
 \end{itemize}
 
 \noindent Note that if $\ell$ is large, then $H(\sthash,x)$ with $x\gets \{0,1\}^\ell$ may give very little information about the previous state hash $\sthash$.
-For example, an extreme case is that if $\ell=k$ and the function $H(h,\cdot)\colon \{0,1\}^k\rightarrow \{0,1\}^k$ happens to be one-to-one for every $h$ (which most likely never happens for practical hash functions) then in fact $H(\sthash,x)$ gives no information on $\sthash$  because the equation $H(h,x)=\sthash'$ can be (uniquely) solved for every state hash $h$ that $\unisrv$ has stored or memorized. In practice, there is no need to choose very large $\ell$ as practical security is possible if $\ell$ is much smaller than $k$.
+For example, an extreme case is that if $\ell=k$ and the function $H(h,\cdot)\colon \{0,1\}^k\rightarrow \{0,1\}^k$ happens to be one-to-one for every $h$ (which most likely never happens for practical hash functions), then in fact $H(\sthash,x)$ gives no information on $\sthash$  because the equation $H(h,x)=\sthash'$ can be (uniquely) solved for every state hash $h$ that $\unisrv$ has stored or memorized. In practice, there is no need to choose a very large $\ell$ as practical security is possible if $\ell$ is much smaller than $k$.
 
 \subsection{Security against Association}
 
-Association adversary $A=(A_1,A_2)$ is two-stage. \medskip
+The Association adversary $A=(A_1,A_2)$ is two-stage. \medskip
 
 \noindent\textbf{Association scenario} involves the following steps:
 \begin{enumerate}
@@ -883,7 +883,7 @@ Association adversary $A=(A_1,A_2)$ is two-stage. \medskip
 \item $\sthash'\gets H(\sthash,x)$.
 \item $\txhash\gets\commitc(H(\pubkey',x,\auxd')))$.
 \item $x'\gets A_2(a; \sthash',\txhash)$.
-\item The attack is successful iff $\sthash\in\{0,1\}^k$, $x'\in\{0,1\}^\ell$, and $H(\sthash,x')=\sthash'$. The success $\epsilon$ of $A$ is the probability that the attack is successful
+\item The attack is successful iff $\sthash\in\{0,1\}^k$, $x'\in\{0,1\}^\ell$, and $H(\sthash,x')=\sthash'$. The success $\epsilon$ of $A$ is the probability that the attack is successful.
 \end{enumerate}
 
 \begin{definition}[association security]
@@ -893,7 +893,7 @@ The Unicity Service is said to be $S$-secure against association if it has $S$ a
 
 \begin{theorem}
 If the hash function is $S$-secure $(k,\ell)$-one-way and the commitment scheme is perfectly hiding, then the Unicity Service is $S_\mathsf{assoc}$-secure against association, where $S_\mathsf{assoc}(\epsilon)= S(\epsilon) - t_\mathsf{sm} - t_\mathsf{hash} - t_\mathsf{com}$, where
-$t_\mathsf{sm}$, $t_\mathsf{hash}$, $t_\mathsf{com}$ are the random sampling time, hashing time, and the commitment computation time, respectively.
+$t_\mathsf{sm}$, $t_\mathsf{hash}$, $t_\mathsf{com}$ are the random sampling time, the hashing time, and the commitment computation time, respectively.
 \end{theorem}
 \begin{proof}
 Let $A=(A_1,A_2)$ be a $t$-time adversary that succeeds in the association scenario with probability $\epsilon$. Consider the following modified attack scenario:
@@ -909,7 +909,7 @@ Let $A=(A_1,A_2)$ be a $t$-time adversary that succeeds in the association scena
 %For any fixed value of $L=(\sthash, \pubkey', \auxd', a)$, due to the perfect hiding, the probability distributions of $\txhash$ and $\txhash'$ are equal and due to Lemma~\ref{le:outputindependence} (by taking $g(x)=H(\pubkey',x,\auxd'))$), the random variables $\txhash$ and $\txhash'$ are both independent of $x$. This means that the arguments $(\sthash',\txhash)$ and $(\sthash',\txhash')$ of $A(a;\cdot)$ are equal
 %in both scenarios, and hence $A$ succeeds in the modified scenario with probability $\epsilon$. We construct an adversary $A'=(A'_1,A'_2)$ as follows:
 
-\noindent For any fixed value of $L=(\sthash, \pubkey', \auxd', a)$, due to perfect hiding, the commitments $\txhash=\commitc(H(\pubkey',x,\auxd'))$ and $\txhash'=\commitc(H(\pubkey',x'',\auxd'))$ have equal probability distributions. Moreover, by Lemma~\ref{le:outputindependence} (with $g(x)=H(\pubkey',x,\auxd')$), the random variables $x$ and $\txhash=\commitc(H(\pubkey',x,\auxd'))$ are independent.
+\noindent For any fixed value of $L=(\sthash, \pubkey', \auxd', a)$, due to perfect hiding, commitments $\txhash=\commitc(H(\pubkey',x,\auxd'))$ and $\txhash'=\commitc(H(\pubkey',x'',\auxd'))$ have equal probability distributions. Moreover, by Lemma~\ref{le:outputindependence} (with $g(x)=H(\pubkey',x,\auxd')$), the random variables $x$ and $\txhash=\commitc(H(\pubkey',x,\auxd'))$ are independent.
 
 Since $x''$ and $x$ are independent, the commitment $\txhash'=\commitc(H(\pubkey',x'',\auxd'))$ is independent of both $x$ and $\sthash'=H(\sthash,x)$. Therefore, the joint distributions of $(\sthash',\txhash)$ and $(\sthash',\txhash')$ are equal, and hence $A$ succeeds in the modified scenario with probability $\epsilon$. We construct an adversary $A'=(A'_1,A'_2)$ as follows:
 \begin{itemize}
@@ -936,7 +936,7 @@ is a security profile of the Unicity service against association.
 
 \subsection{Discussion}
 
-The security proofs against blocking and double spending are also valid in case when the commitment scheme is omitted from the construction and the transaction data hash is computed by $\txhash = H(\pubkey',x,\auxd')$.
+The security proofs against blocking and double spending are also valid in the case when the commitment scheme is omitted from the construction and the transaction data hash is computed by $\txhash = H(\pubkey',x,\auxd')$.
 At the same time, there seem to be no obvious ways of proving that such a simplified scheme is secure against association.
 
 Still, it may be a plausible practical assumption that given $\sthash$ and the next state hash $\sthash'=H(\sthash,x)$ and $\txhash = H(\pubkey',x,\auxd')$ it is infeasible to find $x'$ so that $H(\sthash,x')=\sthash'$. At least for example, if $H$ is \textsf{SHA-256}, there seem to be no obvious ways how to do it if $x$ has sufficiently many random bits.
@@ -944,30 +944,30 @@ Still, it may be a plausible practical assumption that given $\sthash$ and the n
 \section{User Side Privacy}
 
 
-In the previous sections, there is an assumption that the recipient generates a fresh keypair for every transaction. This may be impractical in some applications, especially where the recipient's secure storage is limited. We present two solutions that allow for the generation of unlinkable public keys while maintaining only a single persistent private key.
+In the previous sections, there is the assumption that the recipient generates a fresh keypair for every transaction. This may be impractical in some applications, especially where the recipient's secure storage is limited. We present two solutions that allow for the generation of unlinkable public keys while maintaining only a single persistent private key.
 
 As a requirement, we avoid the persistent state on the client side that must be retained between transactions.
 
 \subsection{A General Solution using Pseudo-Random Functions}
 
-In this subsection, we define \emph{tweakable signature schemes} where a user has a single private key but many public keys, each capable of verifying signatures created with the same private key. This is achieved by separating key generation into two phases:
+In this subsection, we define \emph{multi public key (MPK) signature schemes} where a user has a single private key but many public keys, each capable of verifying signatures created with the same private key. This is achieved by separating key generation into two phases:
 \begin{enumerate}
 \item Private key generation.
-\item Public key generation that dependens on a user-chosen index $\iota$.
+\item Public key generation that depends on a user-chosen index $\iota$.
 \end{enumerate}
-Tweakable signature schemes have to satisfy two security properties:
+MPK signature schemes have to satisfy two security properties:
 \begin{enumerate}
 \item \emph{Existential unforgeability}, which is similar to the standard EF-CMA condition for the ordinary signature schemes.
 \item \emph{Unlinkability} of keys, i.e. the one-time public keys and the signatures verifiable with one-time keys contain no useful information about whether they correspond to the same private key or not.
 \end{enumerate}
 We will show that a wide class of generic signature schemes $\mathsf{S}=(G,S,V)$ can
-be transformed to tweakable signature schemes $\mathsf{S}^F$ by using a pseudo random function family $F$. This wide class contains, for example all Schnorr type signature schemes (like EdDSA) and DSA type signature schemes like ECDSA (used in Bitcoin). In principle, such a transformation also applies to RSA but is much less efficient.
-We will prove that whenever a generic scheme is EF-CMA secure and $F$ is a secure pseudo-random function family, then the tweakable signature scheme $\mathsf{S}^F$ is both existentially unforgeable and unlinkable.
+be transformed to MPK signature schemes $\mathsf{S}^F$ by using a pseudo random function family $F$. This wide class contains, for example all Schnorr type signature schemes (like EdDSA) and DSA type signature schemes like ECDSA (used in Bitcoin). In principle, such a transformation also applies to RSA but is much less efficient.
+We will prove that whenever a generic scheme is EF-CMA secure and $F$ is a secure pseudo-random function family, then the MPK signature scheme $\mathsf{S}^F$ is both existentially unforgeable and unlinkable.
 
 \subsubsection{Definition and Motivation}
 
-\begin{definition}[Tweakable signature scheme]
-A tweakable signature scheme is a tuple $(G_s,G_p,S,V)$ such that:
+\begin{definition}[MPK signature scheme]
+A multi public key (MPK) signature scheme is a tuple $(G_s,G_p,S,V)$ such that:
 \begin{itemize}
 \item $k\gets G_s$ generates the private key
 \item $X_\iota\gets G_p(k,\iota)$ generates a (one-time) public key for an index $\iota$
@@ -979,7 +979,7 @@ so that the following verification identity holds for every key $k$, for every m
 V(G_p(k,\iota),m,S(k;\iota,m))=1\enspace.
 \]
 \end{definition}
-Tweakable signature schemes may be used in payment scenarios, where a payee has the private key $k$ of a tweakable signature scheme
+MPK signature schemes may be used in payment scenarios, where a payee has the private key $k$ of a MPK signature scheme
 $(G_s,G_p,S,V)$:
 \begin{enumerate}
 \item The payee first sends an invoice to the payer, where the invoice contains the index $\iota$ as a \emph{reference number} as well as the specific public key $X_\iota =G_p(k,\iota)$. The reference number may depend on the goods or services for which the invoice was sent.
@@ -987,7 +987,7 @@ $(G_s,G_p,S,V)$:
 \item The payee may then check that the signed transaction $(T,\sigma)$ was received by the payment system (for example, is in a sufficiently old Bitcoin block) and that
 $T.X_\iota=G_p(k,T.\iota)$. By the explicit reference number $T.\iota$, the payee is also able to check for which goods or services the incoming payment was made.
 \end{enumerate}
-If the tweakable signature scheme is unlinkable, it is not later possible to determine whether any two signed payment transactions $(T,\sigma), (T',\sigma')$
+If the MPK signature scheme is unlinkable, it is not later possible to determine whether any two signed payment transactions $(T,\sigma), (T',\sigma')$
 are associated with the same payee or the same payer.
 
 \subsubsection{Security Definitions}
@@ -1001,7 +1001,7 @@ holds a secret key $k$, has a set $I$ (which is initially empty) as its state, a
 \end{itemize}
 
 \begin{definition}[EF-CKMA]
-A tweakable signature scheme $\tilde{\mathsf{S}}=(G_s,G_p,S,V)$ is $s$-secure against existential forgeries under
+A MPK signature scheme $\tilde{\mathsf{S}}=(G_s,G_p,S,V)$ is $s$-secure against existential forgeries under
 chosen key-message attack (EF-CKMA) if it has $s$ as a security profile $s$ in the following attack scenario:
 \begin{enumerate}
 \item $k\gets G_s$
@@ -1015,14 +1015,14 @@ chosen key-message attack (EF-CKMA) if it has $s$ as a security profile $s$ in t
 The success $\epsilon$ of $A$ is the probability that $A$ is successful.
 \end{enumerate}
 \end{definition}
-For defining the unlinkability, we introduce an additional oracle $\mathcal{O}^{\tilde{\mathsf{S}}}$ that is similar to the first oracle, but handles the
+For defining the unlinkability, we introduce an additional oracle $\mathcal{O}^{\tilde{\mathsf{S}}}$ that is similar to the first oracle, but handles
 queries as follows:
 \begin{itemize}
-\item $\mathcal{O}^{\tilde{\mathsf{S}}}(\mathsf{gen};\iota)$ -- a key generation query that is answered as follows. If $\iota\in I$ the  oracle returns $\bot$ (the index was already used). Otherwise, the oracle sets $I\gets I\cup \{\iota\}$ (marks $\iota$ as "used"), generates $k_\iota\gets G_s$, saves $k_\iota$, and returns $X_\iota = G_p(k_\iota,\iota)$.
-\item $\mathcal{O}^{\tilde{\mathsf{S}}}(\mathsf{sig};\iota,m)$ -- a signing query that is answered as follows. If $\iota\not\in I$ the  oracle returns $\bot$ (the key $X_\iota$ is not yet generated). Otherwise, the oracle returns $\sigma=S(k_\iota;\iota,m)$.
+\item $\mathcal{O}^{\tilde{\mathsf{S}}}(\mathsf{gen};\iota)$ -- a key generation query that is answered as follows. If $\iota\in I$, the oracle returns $\bot$ (the index was already used). Otherwise, the oracle sets $I\gets I\cup \{\iota\}$ (marks $\iota$ as "used"), generates $k_\iota\gets G_s$, saves $k_\iota$, and returns $X_\iota = G_p(k_\iota,\iota)$.
+\item $\mathcal{O}^{\tilde{\mathsf{S}}}(\mathsf{sig};\iota,m)$ -- a signing query that is answered as follows. If $\iota\not\in I$ the oracle returns $\bot$ (the key $X_\iota$ is not yet generated). Otherwise, the oracle returns $\sigma=S(k_\iota;\iota,m)$.
 \end{itemize}
 \begin{definition}[Unlikability]\label{def:unlinkability}
-A tweakable signature scheme $\tilde{\mathsf{S}}=(G_s,G_p,S,V)$ is $s$-secure unlinkable if is has $s$ as a security profile in the following scenario:
+A MPK signature scheme $\tilde{\mathsf{S}}=(G_s,G_p,S,V)$ is $s$-secure unlinkable if it has $s$ as a security profile in the following scenario:
 \begin{enumerate}
 \item $k\gets G_s$
 \item $b_1\gets D^{\mathcal{O}^{\tilde{\mathsf{S}}}_k}$
@@ -1035,14 +1035,14 @@ The idea of the security condition is that a distinguisher $D$ cannot make diffe
 or is generated independently for every (adversary-chosen) index (the oracle $\mathcal{O}^{\tilde{\mathsf{S}}}$).
 
 The oracles are defined so that the queries
-$\mathcal{O}^{\tilde{\mathsf{S}}}_k(\mathsf{gen};\iota)$ cannot be made twice, i.e. $\bot$ is returned for a repeated query. This restriction is essential, because otherwise $D$ can easily distinguish the oracles: $\mathcal{O}^{\tilde{\mathsf{S}}}_k(\mathsf{gen};\iota)$ will always be the same but the public keys generated by calling $\mathcal{O}^{\tilde{\mathsf{S}}}(\mathsf{gen};\iota)$ twice can be different.
+$\mathcal{O}^{\tilde{\mathsf{S}}}_k(\mathsf{gen};\iota)$ cannot be made twice, i.e. $\bot$ is returned for a repeated query. This restriction is essential because otherwise $D$ can easily distinguish the oracles: $\mathcal{O}^{\tilde{\mathsf{S}}}_k(\mathsf{gen};\iota)$ will always be the same, but the public keys generated by calling $\mathcal{O}^{\tilde{\mathsf{S}}}(\mathsf{gen};\iota)$ twice can be different.
 
 \subsubsection{EF-CKMA for Ordinary Signature Schemes}\label{sec:efckma-ordinary}
-Before defining a general construction of tweakable signature schemes from ordinary ones, we need to define EF-CKMA security for ordinary signature schemes. For that, we define an additional oracle $\mathcal{O}^{\mathsf{S}}$ that handles the
+Before defining a general construction of MPK signature schemes from ordinary ones, we need to define EF-CKMA security for ordinary signature schemes. For that, we define an additional oracle $\mathcal{O}^{\mathsf{S}}$ that handles the
 queries as follows:
 \begin{itemize}
-\item $\mathcal{O}^{\mathsf{S}}(\mathsf{gen};\iota)$ -- a key generation query that is answered as follows. If $\iota\in I$ the  oracle returns $\bot$ (the index was already used). Otherwise, the oracle sets $I\gets I\cup \{\iota\}$ (marks $\iota$ as "used"), generates $(x_\iota,X_\iota)\gets G$, saves $x_\iota$, and returns $X_\iota$.
-\item $\mathcal{O}^{\mathsf{S}}(\mathsf{sig};\iota,m)$ -- a signing query that is answered as follows. If $\iota\not\in I$ the  oracle returns $\bot$ (the key $X_\iota$ is not yet generated). Otherwise, the oracle returns $\sigma=S(x_\iota;m)$.
+\item $\mathcal{O}^{\mathsf{S}}(\mathsf{gen};\iota)$ -- a key generation query that is answered as follows. If $\iota\in I$, the  oracle returns $\bot$ (the index was already used). Otherwise, the oracle sets $I\gets I\cup \{\iota\}$ (marks $\iota$ as "used"), generates $(x_\iota,X_\iota)\gets G$, saves $x_\iota$, and returns $X_\iota$.
+\item $\mathcal{O}^{\mathsf{S}}(\mathsf{sig};\iota,m)$ -- a signing query that is answered as follows. If $\iota\not\in I$ the oracle returns $\bot$ (the key $X_\iota$ is not yet generated). Otherwise, the oracle returns $\sigma=S(x_\iota;m)$.
 \end{itemize}
 
 
@@ -1059,15 +1059,15 @@ A signature scheme $\mathsf{S}=(G,S,V)$ is $s$-secure EF-CKMA if it has $s$ as a
 \end{enumerate}
 \end{enumerate}
 \end{definition}
-EF-CKMA differs from traditional EF-CMA because the adversary is able to initiate the use of new keys and may create an existential forgery with any of the keys. The indices are used just for labelling the generated keys.
+EF-CKMA differs from traditional EF-CMA because the adversary is able to initiate the use of new keys and may create an existential forgery with any of the keys. The indices are used just for labeling the generated keys.
 
-It turns out that EF-CKMA is not conceptually stronger notion of security because any EF-CMA signature scheme is also EF-CKMA, though with some security loss.
+It turns out that EF-CKMA is not a conceptually stronger notion of security because any EF-CMA signature scheme is also EF-CKMA, though with some security loss.
 
 \begin{theorem}[EF-CMA implies EF-CKMA]
 Every signature scheme $\mathsf{S}=(G,S,V)$ that is $s$-secure EF-CMA is $s'$-secure EF-CKMA, where $s'$ is a function for which the implication $\tau(t)\ge s(\epsilon/t) \; \Rightarrow \; t\ge s'(\epsilon)$ holds for every $t$ and $\tau$ is defined by $\tau(t)=(1+\max\{t_\mathsf{gen},t_\mathsf{sig}\})\cdot t + t_\mathsf{sm}$.
 \end{theorem}
 \begin{proof}
-Given a $t$-time adversary $A$ that has success $\epsilon$ in the EF-CKMA scenario, we construct an EF-CMA adversary $B$ that has success $\epsilon/t$ and running time $\tau(t)$ which means that $\tau(t)\ge s(\epsilon/t)$. The adversary $B^{S(x;\cdot)}(X)$ (where $(x,X)$ is a private-public key pair) proceeds as follows:
+Given a $t$-time adversary $A$ that has success $\epsilon$ in the EF-CKMA scenario, we construct an EF-CMA adversary $B$ that has success $\epsilon/t$ and running time $\tau(t)$, which means that $\tau(t)\ge s(\epsilon/t)$. The adversary $B^{S(x;\cdot)}(X)$ (where $(x,X)$ is a private-public key pair) proceeds as follows:
 \begin{enumerate}
 \item Generates a random number $t_0\gets \{1,\ldots,t\}$
 \item Simulates $(\iota,X,m,\sigma)\gets A^{\mathcal{O}^\mathsf{S}}$ by answering the $\mathcal{O}^\mathsf{S}$-queries as follows:
@@ -1086,15 +1086,15 @@ With probability $\epsilon/t$ the adversary $(\iota,X,m,\sigma)\gets A^{\mathcal
 (t_\mathsf{sm}+\max\{t_\mathsf{gen},t_\mathsf{sig}\})\cdot t \ge
 (1+\max\{t_\mathsf{gen},t_\mathsf{sig}\})\cdot t + t_\mathsf{sm} \ge s_\mathsf{cma}\cdot \epsilon/t
 \]
-Hence, $t\ge \sqrt{\frac{s_\mathsf{cma}\cdot \epsilon}{t_\mathsf{sm}+\max\{t_\mathsf{gen},t_\mathsf{sig}\}}}$ and hence, it is sufficient to take \[s'(\epsilon)=\sqrt{\frac{s(\epsilon)}{t_\mathsf{sm}+\max\{t_\mathsf{gen},t_\mathsf{sig}\}}}\enspace.
+Hence, $t\ge \sqrt{\frac{s_\mathsf{cma}\cdot \epsilon}{t_\mathsf{sm}+\max\{t_\mathsf{gen},t_\mathsf{sig}\}}}$ and hence it is sufficient to take \[s'(\epsilon)=\sqrt{\frac{s(\epsilon)}{t_\mathsf{sm}+\max\{t_\mathsf{gen},t_\mathsf{sig}\}}}\enspace.
 \]
 
 \subsubsection{Generic Construction and Security Proofs}
 
-In this section, we define a wide class of \emph{tweak-friendly} signature schemes that can be transformed into tweakable signature schemes.
+In this section, we define a wide class of \emph{MPK-friendly} signature schemes that can be transformed into MPK signature schemes.
 
-\begin{definition}[Tweak-friendly signature scheme]
-A signature scheme is tweak-friendly if the key-generation function $G$ is in the form:
+\begin{definition}[MPK-friendly signature scheme]
+A signature scheme is MPK-friendly if the key-generation function $G$ is in the form:
 \begin{enumerate}
 \item $x\gets \mathcal{X}$
 \item $X\gets f(x)$
@@ -1102,11 +1102,12 @@ A signature scheme is tweak-friendly if the key-generation function $G$ is in th
 \end{enumerate}
 where $f$ is a deterministic function.
 \end{definition}
-For example, ECDSA and EdDSA are tweak-friendly, because their keys are generated by the rule: $x\gets \mathbb{Z}_q$, $X=x\mathbf{g}$, where $\mathbf{g}$ is a generator of a cyclic group $\mathbb{G}$ with order $q$, i.e. in that case, $\mathcal{X}=\mathbb{Z}_q$ and $f\colon \mathbb{Z}_q\rightarrow \mathbb{G}$ is defined by  $f(x)=x\mathbf{g}$.
+For example, ECDSA and EdDSA are MPK-friendly, because their keys are generated by the rule: $x\gets \mathbb{Z}_q$, $X=x\mathbf{g}$, where $\mathbf{g}$ is a generator of a cyclic group $\mathbb{G}$ with order $q$, i.e. in that case, $\mathcal{X}=\mathbb{Z}_q$ and $f\colon \mathbb{Z}_q\rightarrow \mathbb{G}$ is defined by  $f(x)=x\mathbf{g}$.
 
 
 \begin{definition}[Transformed scheme]
-Let $\mathsf{S}=(G,S,V)$ be a tweak-friendly signature scheme and $F\colon K\times \mathbb{I} \rightarrow \mathcal{X}$ be a pseudo-random function family.
+
+Let $\mathsf{S}=(G,S,V)$ be a MPK-friendly signature scheme, and $F\colon K\times \mathbb{I} \rightarrow \mathcal{X}$ be a pseudo-random function family.
 The transformed scheme $\mathsf{S}^F=(G_s,G_p,S',V)$ is defined as follows:
 \begin{itemize}
 \item $G_s$ outputs a uniformly random $k\gets K$
@@ -1114,14 +1115,14 @@ The transformed scheme $\mathsf{S}^F=(G_s,G_p,S',V)$ is defined as follows:
 \item $S'(k;\iota,m)=S(F_k(\iota); m)$ for every $k\in K$, $\iota\in \mathbb{I}$, and for every message $m$
 \end{itemize}
 \end{definition}
-It is easy to see that the transformed scheme is a tweakable signature scheme. Note also that in the scenario $k \gets K, x_\iota \gets F_k(\iota), X_\iota\gets G_p(\iota, x_\iota)$
+It is easy to see that the transformed scheme is a MPK signature scheme. Note also that in the scenario $k \gets K, x_\iota \gets F_k(\iota), X_\iota\gets G_p(\iota, x_\iota)$
 the distribution of $(X_\iota,x_\iota)$ is the same as in the scenario
 $(X_\iota,x_\iota)\gets G$.
 
 \begin{theorem}
-If $\mathsf{S}=(G,S,V)$ is a tweak-friendly singature scheme and $F$ is an $s$-secure PRF, then the transformed scheme $\tilde{S}=\mathsf{S}^F=(G_s,G_p,S',V)$ is $s'$-
-secure unlinkable, where $s'(\epsilon) = \frac{s(\epsilon)}{1+\max\{t_\mathsf{gen},t_\mathsf{sig}\})}$.
+If $\mathsf{S}=(G,S,V)$ is a MPK-friendly signature scheme and $F$ is an $s$-secure PRF, then the transformed scheme $\tilde{S}=\mathsf{S}^F=(G_s,G_p,S',V)$ is $s'$-secure unlinkable, where $s'(\epsilon) = \frac{s(\epsilon)}{1+\max\{t_\mathsf{gen},t_\mathsf{sig}\})}$.
 \end{theorem}
+
 \begin{proof}
 Let $D$ be a $t$-time distinguisher that has success $\epsilon$ in the unlinkability scenario. We construct a distinguisher $\underline{D}$ for $F$ as follows. Given access to an oracle $\varphi(\cdot)$ the distinguisher $\underline{D}^{\varphi(\cdot)}$
 proceeds as follows:
@@ -1133,6 +1134,7 @@ proceeds as follows:
 \end{itemize}
 \item Returns $b$
 \end{enumerate}
+
 If $\varphi(\cdot)=F_k(\cdot)$, then the oracle $\mathcal{O}^\varphi$ is equivalent to  $\mathcal{O}^{\tilde{\mathsf{S}}}_k$, because then:
 \begin{itemize}
 \item $\mathcal{O}^\varphi(\mathsf{gen};\iota) = \mathcal{O}^{\tilde{\mathsf{S}}}_k(\mathsf{gen};\iota)$ as $f(\varphi(\iota)) = f(F_k(\iota))=G_p(k,\iota)$, and
@@ -1156,10 +1158,9 @@ hence, the success of $\underline{D}$ in the PRF-scenario is $\epsilon$. As the 
 \end{proof}
 
 \begin{theorem}
-If $\mathsf{S}=(G,S,V)$ is a tweak-friendly singature scheme that is $s$-secure EF-CKMA and
-its transformed scheme $\tilde{S}=\mathsf{S}^F=(G_s,G_p,S',V)$ is $s$-secure unlinkable, then
-$\tilde{S}$ is $s'$-secure EF-CKMA, where $s'(\epsilon) = s(\epsilon/2)$.
+If $\mathsf{S}=(G,S,V)$ is a MPK-friendly signature scheme that is $s$-secure EF-CKMA and its transformed scheme $\tilde{S}=\mathsf{S}^F=(G_s,G_p,S',V)$ is $s$-secure unlinkable, then $\tilde{S}$ is $s'$-secure EF-CKMA, where $s'(\epsilon) = s(\epsilon/2)$.
 \end{theorem}
+
 \begin{proof}
 Let $A^\mathcal{O}$ be a $t$-time oracle adversary that succeeds with probability $\epsilon$ in the EF-CKMA scenario. We construct a distinguisher $D^\mathcal{O}$ for unlinkability and an EF-CKMA adversary $A^\mathcal{O}_\mathsf{ckma}$ for $\mathsf{S}$ as follows:
 \begin{itemize}
@@ -1179,7 +1180,7 @@ is equivalent to the scenario
 \item $\mathcal{O}^{\tilde{\mathsf{S}}}(\mathsf{sig};\iota,m) = \mathcal{O}^{\mathsf{S}}(\mathsf{sig};\iota,m)$ as $S'(k_\iota;\iota,m)=S(F_{k_\iota}(\iota);m)=S(x_\iota;m)$.
 \end{itemize}
 Hence, $A_\mathsf{ckma}^{\mathcal{O}^\mathsf{S}}$
-succeeds in the EF-KCMA scenario with probability $\epsilon_\mathsf{ckma}=\epsilon'$.
+succeeds in the EF-CKMA scenario with probability $\epsilon_\mathsf{ckma}=\epsilon'$.
 Therefore, $\epsilon \le \epsilon_\mathsf{unl}+ \epsilon_\mathsf{kcma}$. As the construction of $D$ and $A_\mathsf{ckma}$ involves no computational time overhead, we conclude that
 $\tilde{\mathsf{S}}$ is $s'$-secure EF-CKMA with $s'(\epsilon) = s(\epsilon/2)$.
 \end{proof}
@@ -1435,7 +1436,7 @@ Under the DDH assumption, the value $r \cdot P$ is pseudorandom (given $r \cdot 
 With this adjustment, the proofs can be adapted to the standard model by replacing random oracle arguments with PRF indistinguishability under DDH, at the cost of slightly more complex security reductions and stronger assumptions on the randomness extractor properties.
 
 
-\include{unicity-programming}
+% \include{unicity-programming}
 
 
 \begin{thebibliography}{99}
