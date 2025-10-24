@@ -42,24 +42,26 @@ interface Predicate {
 
   /** Calculates the fingerprint/hash based on the predicate type and locking params.
    * TODO: In case of composite predicate, first calculate recursively the fingerprints of all its subpredicates, then hash the boolean expression composing all the subpredicates */
-  function calculateFingerprint(): Hash;
+  function calculateFingerprint(): PredicateFingerprint;
 
   /**
    * TODO: define LockingParam and UnlockingArg types
    */
 }
+
+type PredicateFingerprint = Hash | PublicKey
 ```
 
 ### Token State Structure
 
 ```typescript
 /**
- * TokenState represents the locking configuration of a token (particular common case: ownership) by a predicate
- * In specific simple ownership case this corresponds to the state $(pk, aux)$ from the paper. In the generic case 
+ * TokenState represents the locking configuration of a token (particular common case: single pubkey ownership) by a predicate
+ * In specific simple ownership case this corresponds to the state $(pk, aux)$ from the paper (we may consider pubkey ownership predicate as the default predicate type and always omot it for the simplicity). In the generic case this is $(predicateType, lockParams, aux)$
  */
 interface TokenState {
   /** Current predicate fingerprint. In case of simple pubkey ownership, this can be owner's public key ($pk$ in paper) */
-  ownerPublicKey: PublicKey;
+  predicateFingerprint: PredicateFingerprint;
 
   /** Optional auxiliary data for this state ($aux$ in paper) */
   auxiliaryData?: string; // hex-encoded bytes
@@ -67,8 +69,8 @@ interface TokenState {
 
 /**
  * State identifier uniquely identifies a token state
- * Calculated as: stateId = H(pk || h_st)
- * Corresponds to $H(pk, h_st)$ in the paper
+ * Calculated as: stateId = H(predicateFingerprint || h_st)
+ * In default pubkey ownership predicate, it corresponds to $H(pk, h_st)$ in the paper
  */
 type StateId = Hash;
 ```
@@ -77,12 +79,12 @@ type StateId = Hash;
 
 ```typescript
 /**
- * Calculate unique state identifier from public key and state hash
- * Formula: stateId = H(pk || h_st)
- * This corresponds to $H(pk, h_st)$ in the paper
+ * Calculate unique state identifier from the predicate fingerprint and state hash
+ * Formula: stateId = H(predicateFingerprint || h_st)
+ * In default pubkey ownership predicate, it corresponds to $H(pk, h_st)$ in the paper
  */
 function calculateStateId(publicKey: PublicKey, stateHash: Hash): StateId {
-  return sha256(publicKey + stateHash);
+  return sha256(predicateFingerprint + stateHash);
 }
 ```
 
