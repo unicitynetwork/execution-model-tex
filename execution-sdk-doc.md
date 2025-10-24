@@ -49,7 +49,8 @@ interface Predicate {
    */
 }
 
-type PredicateFingerprint = Hash | PublicKey
+type PredicateFingerprint = Hash | PublicKey;
+type UnlockingArg = InclusionProof | Hash // we need hash here for the burn predicate, for token split tree. What kind of other unlocking arguments we may have?
 ```
 
 ### Token State Structure
@@ -100,7 +101,7 @@ function calculateStateId(publicKey: PublicKey, stateHash: Hash): StateId {
  */
 interface TransactionData {
   /** Recipient's public key ($pk'$ in paper) */
-  recipientPublicKey: PublicKey;
+  recipientAddress: Address;
 
   /** Random blinding mask for privacy and state evolution ($x$ in paper) */
   blindingMask: BlindingMask;
@@ -160,19 +161,19 @@ interface CertifiedTransaction {
   /** The transaction being certified */
   transaction: Transaction;
 
-  /** Digital signature by current owner ($\sigma$ in paper) */
-  signature: Signature;
+  /** Unlocking arguments for the predicate in the current transaction state.
+   * In case of the default predicate this must be a signature.
+   */
+  unlockingArguments: Record<string, UnlockingArg>;
 
   /** Transaction data hash ($h_tx$ in paper) */
   transactionHash: Hash;
-
-  /** Inclusion proof from Unicity Service ($\pi$ in paper) */
-  inclusionProof: InclusionProof;
 }
 
 /**
  * Inclusion proof from Unicity Service
  * Proves that a state transition was registered
+ * @cryptohog: actually, we may extend the definition of the inclusion proof to cover cases of non-inclusion, since inclusion and non-inclusion have basically same structure, except that exclusion proof is an inclusion proof of a closest intermediary branch-out neighbor prooving that there exists no branch in the tree leading to the requested target
  */
 interface InclusionProof {
   /** Cryptographic proof data ($\pi_inc$ in paper) */
