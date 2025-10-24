@@ -25,7 +25,7 @@ type BlindingMask = ...  // at least 128 bits of entropy
  * For the purpose of addressing and calculating Unicity request IDs, each predicate must provide a unique way to calculate its fingerprint/hash.
  * The predicate can be atomic or composite (consisting of other predicates joined via boolean operators). Composite predicates are out of scope of the current spec.
  *
- * Examples: burn (FALSE always), simple single pubkey lock, m/n multisig lock, timelock, atomic swap unlocker, generic WASM function, requirement to spend to specific addresses, recursive/composition of other predicates
+ * Examples: PREBUILT: burn (FALSE always), simple single pubkey lock, m/n multisig lock, timelock, requirement to spend to specific addresses, atomic swap unlocker; GENERIC: generic bitcoin script, generic WASM function; COMPOSITE: boolean expression combining other predicates by using logical AND, OR, NOT
  */
 interface Predicate {
   /** Each specific predicate type would require a specific set of locking params and unlocking arguments.
@@ -50,7 +50,7 @@ interface Predicate {
 }
 
 type PredicateFingerprint = Hash | PublicKey;
-type LockingParam = PublicKey | string // In cease we deal with generic zk-proofs, we can regard the locking param as some specific public statement for the given zk-proof. We can add more specific types here too.
+type LockingParam = PublicKey | ScriptSig | string // In cease we deal with generic zk-proofs, we can regard the locking param as some specific public statement for the given zk-proof. We can add more specific types here too.
 type UnlockingArg = InclusionProof | Hash // we need hash here for the burn predicate, for token split tree. What kind of other unlocking arguments we may have?
 ```
 
@@ -198,18 +198,21 @@ interface InclusionProof {
  * Corresponds to $Q = (pk, h_st, h_tx, \sigma)$ from the paper
  */
 interface UnicityServiceRequest {
-  /** Current owner's public key ($pk$ in paper). Generalization: $pk$ to be a locking paremeter for the respective predicate*/
-  lockingParam: LockingParameter;
+  /** Current owner's public key ($pk$ in paper). Generalization: $pk$ to be a locking paremeter for the respective predicate, also optionally blinded*/
+  blindedPublicIdentifier: BlindedPublicIdentifier;
 
-  /** Current state hash ($h_st$ in paper) */
-  currentStateHash: Hash;
+  /** Current state hash ($h_st$ in paper), also optionally blinded */
+  blindedCurrentStateHash: Hash;
 
-  /** Transaction data hash ($h_tx$ in paper) */
-  transactionHash: Hash;
+  /** Transaction data hash ($h_tx$ in paper), aslo optionally blinded */
+  blindedTransactionHash: Hash;
 
-  /** Owner's signature authorizing the transition ($\sigma$ in paper) */
-  signature: Signature;
+  /** Owner's signature authorizing the transition ($\sigma$ in paper). Generalization: this should be the unlocking argument corresponding to the locking param */
+  selfAuthProof: SelfAuthenticatedProof;
 }
+
+type BlindedPublicIdentifier = PublicKey | SciptPubKey | ZKPublicInput;
+type SelfAuthenticatedProof = Signature | ScriptSig | ZKProof;
 
 /**
  * Response from Unicity Service
