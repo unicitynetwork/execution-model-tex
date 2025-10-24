@@ -50,6 +50,7 @@ interface Predicate {
 }
 
 type PredicateFingerprint = Hash | PublicKey;
+type LockingParam = PublicKey | string // In cease we deal with generic zk-proofs, we can regard the locking param as some specific public statement for the given zk-proof. We can add more specific types here too.
 type UnlockingArg = InclusionProof | Hash // we need hash here for the burn predicate, for token split tree. What kind of other unlocking arguments we may have?
 ```
 
@@ -197,8 +198,8 @@ interface InclusionProof {
  * Corresponds to $Q = (pk, h_st, h_tx, \sigma)$ from the paper
  */
 interface UnicityServiceRequest {
-  /** Current owner's public key ($pk$ in paper) */
-  ownerPublicKey: PublicKey;
+  /** Current owner's public key ($pk$ in paper). Generalization: $pk$ to be a locking paremeter for the respective predicate*/
+  lockingParam: LockingParameter;
 
   /** Current state hash ($h_st$ in paper) */
   currentStateHash: Hash;
@@ -231,7 +232,7 @@ interface UnicityServiceResponse {
 /**
  * Abstract interface for Unicity Service interaction
  * Modeled as key-value store $R$ in the paper where:
- * - Keys are $H(pk, h_st)$ (StateId)
+ * - Keys are $H(pk, h_st)$ (StateId). Generalization: $pk$ can be some public statement for zk-prooving scheme, normally being a locking parameter for the respective predicate that requires zk-proof as the unlocking argument
  * - Values are $h_tx$ (transaction hashes)
  */
 interface UnicityService {
