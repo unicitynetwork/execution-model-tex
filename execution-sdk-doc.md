@@ -15,17 +15,50 @@ type Signature = ...
 type BlindingMask = ...  // at least 128 bits of entropy
 ```
 
-## Token State and Ownership
+## Token State and Locking condition (Most common simple case: Ownership)
+
+### Predicate structure
+```typescript
+/**
+ * Predicate defines locking condition for a token as a parametrized boolean function. The locking happens by choosing the predicate type and set of locking parameters.
+ * The proof of successful unlock happens by providing some unlocking arguments that render the predicate returning True value.
+ * For the purpose of addressing and calculating Unicity request IDs, each predicate must provide a unique way to calculate its fingerprint/hash.
+ * The predicate can be atomic or composite (consisting of other predicates joined via boolean operators). Composite predicates are out of scope of the current spec.
+ *
+ * Examples: burn (FALSE always), simple single pubkey lock, m/n multisig lock, timelock, atomic swap unlocker, generic WASM function, requirement to spend to specific addresses, recursive/composition of other predicates
+ */
+interface Predicate {
+  /** Each specific predicate type would require a specific set of locking params and unlocking arguments.
+   * TODO: In case of composite predicate, we need some param mapping scheme in order to map each locking param to one or more subpredicates
+   */
+  predicateType: PredicateType;
+  lockingParams: Record<string, LockingParam>;
+
+  /**
+   * Based on the predicate type, locking params and the unlocking arguments, compute Boolean value
+   * TODO: In the case of composite predicate, evaluate all the relevant subpredicates and the respective boolean expression concatinating the subpredicates
+   */
+  function evaluate(unlockingArguments: Record<string, UnlockingArg>): Boolean;
+
+  /** Calculates the fingerprint/hash based on the predicate type and locking params.
+   * TODO: In case of composite predicate, first calculate recursively the fingerprints of all its subpredicates, then hash the boolean expression composing all the subpredicates */
+  function calculateFingerprint(): Hash;
+
+  /**
+   * TODO: define LockingParam and UnlockingArg types
+   */
+}
+```
 
 ### Token State Structure
 
 ```typescript
 /**
- * TokenState represents the ownership configuration of a token
- * Corresponds to the state $(pk, aux)$ from the paper
+ * TokenState represents the locking configuration of a token (particular common case: ownership) by a predicate
+ * In specific simple ownership case this corresponds to the state $(pk, aux)$ from the paper. In the generic case 
  */
 interface TokenState {
-  /** Current owner's public key ($pk$ in paper) */
+  /** Current predicate fingerprint. In case of simple pubkey ownership, this can be owner's public key ($pk$ in paper) */
   ownerPublicKey: PublicKey;
 
   /** Optional auxiliary data for this state ($aux$ in paper) */
