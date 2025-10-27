@@ -54,7 +54,7 @@ All structured data is encoded using CBOR (Concise Binary Object Representation)
 
 A **Token** is a self-contained cryptographic object containing:
 
-```
+```ts
 Token := {
   state: TokenState,           // Current ownership state
   genesis: MintTransaction,    // Initial creation proof
@@ -66,7 +66,7 @@ Token := {
 
 **TokenState** represents a specific ownership configuration:
 
-```
+```ts
 TokenState := {
   lock: LockingCondition,  // Ownership verification mechanism
   aux: bytes?,                // Optional state-specific auxiliary data
@@ -78,7 +78,7 @@ TokenState := {
 **Locking Conditions** define token ownership and spending conditions. Two primary types exist:
 
 #### Locking Condition (Public Ownership)
-```
+```ts
 LockingCondition := {
   type: "UNMASKED",
   publicKey: PublicKey,         // Owner's public key
@@ -91,7 +91,7 @@ LockingCondition := {
 ```
 
 #### Blinded Locking Condition (Privacy-Preserving Ownership)
-```
+```ts
 MaskedLockingCondition := {
   type: "MASKED",
   publicKey: PublicKey,         // Owner's public key
@@ -131,7 +131,7 @@ interface UnicityService {
 
 **StateId** serves as a unique state identifier:
 
-```
+```typescript
 StateId := Hash(publicKey || stateHash)
 ```
 
@@ -147,11 +147,11 @@ This construction ensures each token state has a globally unique identifier whil
 
 The **Authenticator** (kept opaque mostly) serves as the token owner's authorization to execute the request. It contains:
 
-```
+```typescript
 Authenticator := {
   publicKey: PublicKey,        // Owner's verification key
   signature: Signature,        // Digital signature over transaction
-  stateHash: Hash             // Hash of the source state being spent
+  stateHash: Hash              // Hash of the source state being spent
 }
 ```
 
@@ -213,7 +213,7 @@ Information Hidden from Unicity Service:
 ### 5.1 State Transition Messages
 
 #### Commitment Message
-```
+```typescript
 Commitment := {
   stateId: StateId,                 // Unique state identifier
   transactionData: TransactionData, // State transition details
@@ -222,7 +222,7 @@ Commitment := {
 ```
 
 #### Transaction Data
-```
+```typescript
 TransactionData := {
   hash: Hash,                    // Self-identifying hash
   sourceState: TokenState,       // Current state being spent
@@ -235,7 +235,7 @@ TransactionData := {
 ```
 
 #### Mint Transaction Data
-```
+```typescript
 MintTransactionData := {
   hash: Hash,                    // Self-identifying hash
   tokenId: TokenId,              // Unique token identifier
@@ -261,7 +261,7 @@ MintTransactionData := {
 ### 6.1 Address Types
 
 #### Direct Address
-```
+```typescript
 DirectAddress := "DIRECT://" || Hex(predicate.reference.toCBOR()) || Hex(checksum[0:4])
 ```
 

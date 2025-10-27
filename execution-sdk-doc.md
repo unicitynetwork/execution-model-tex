@@ -40,19 +40,6 @@ interface TokenState {
 type StateId = Hash;
 ```
 
-### State ID Calculation
-
-```typescript
-/**
- * Calculate unique state identifier from public key and state hash
- * Formula: stateId = H(pk || h_st)
- * This corresponds to $H(pk, h_st)$ in the paper
- */
-function calculateStateId(publicKey: PublicKey, stateHash: Hash): StateId {
-  return sha256(publicKey + stateHash);
-}
-```
-
 ## Transaction Data Structures
 
 ### Transaction Data
@@ -60,7 +47,7 @@ function calculateStateId(publicKey: PublicKey, stateHash: Hash): StateId {
 ```typescript
 /**
  * Transaction data structure for token transfers
- * Corresponds to $D = (pk', x, auxd)$ from the paper
+ * Corresponds to $D = (pk', x, aux')$ from the paper
  * Unified structure for both mint and transfer transactions
  */
 interface TransactionData {
@@ -70,19 +57,37 @@ interface TransactionData {
   /** Random blinding mask for privacy and state evolution ($x$ in paper) */
   blindingMask: BlindingMask;
 
-  /** Auxiliary data for the transaction ($aux'$ in paper) */
+  /** Auxiliary data for the next token state ($aux'$ in paper) */
   recipientAuxiliaryData: string; // hex-encoded bytes
 
   // Additional fields for mint transactions (zero/empty for transfers)
+  mintTransactionData: MintTransactionData?;
+}
 
-  /** Token identifier (only for mint transactions) */
-  tokenId?: string;
+MintTransactionData := {
+  tokenId: TokenId,              // Unique token identifier
+  tokenType: TokenType,          // Token class identifier
+  tokenData: bytes,              // Immutable token data
+  coinData: CoinData?,           // Optional payload of fungible coin + value
+  reason: Serializable?          // Optional mint justification
+  // bridged asset: burn or locking proof / reference
+}
 
-  /** Token type identifier (only for mint transactions) */
-  tokenType?: string;
+CoinData := {
+  coinId: CoinId,
+  balance: bigint;
+}
 
-  /** Mint justification/reason (only for mint transactions) */
-  mintReason?: string;
+// CoinId is a 32-byte identifier for a specific coin type
+type CoinId = Uint8Array;  // 32 bytes
+
+/**
+ * Transaction data hash calculation
+ * In the paper: $h_tx = \commitc(H(D))$
+ * With unity commitment: $h_tx = H(D)$
+ */
+function calculateTransactionHash(d: TransactionData): Hash {
+  return sha256(encodeTransactionData(d));
 }
 ```
 
@@ -100,15 +105,6 @@ interface Transaction {
   /** Transaction data containing recipient and other details */
   transactionData: TransactionData;
 }
-
-/**
- * Transaction data hash calculation
- * In the paper: $h_tx = \commitc(H(D))$
- * With unity commitment: $h_tx = H(D)$
- */
-function calculateTransactionHash(d: TransactionData): Hash {
-  return sha256(encodeTransactionData(d));
-}
 ```
 
 ## Certified Transaction and Proofs
@@ -122,10 +118,10 @@ function calculateTransactionHash(d: TransactionData): Hash {
  * With unity commitment, $d$ is omitted
  */
 interface CertifiedTransaction {
-  /** The transaction being certified */
+  /** The transaction being certified ($T$) */
   transaction: Transaction;
 
-  /** Digital signature by current owner ($\sigma$ in paper) */
+  /** Digital signature by current owner ($\sigma$ in paper) on transaction */
   signature: Signature;
 
   /** Transaction data hash ($h_tx$ in paper) */
@@ -140,14 +136,8 @@ interface CertifiedTransaction {
  * Proves that a state transition was registered
  */
 interface InclusionProof {
-  /** Cryptographic proof data ($\pi_inc$ in paper) */
-  proofData: string; // Implementation-specific proof format
-
-  /** Merkle root or other verification anchor */
-  merkleRoot?: Hash;
-
-  /** Additional metadata for proof verification */
-  metadata?: Record<string, any>;
+  /** Cryptographic proof data (opaque $\pi_inc$ in paper) */
+  /** Documented elsewhere */
 }
 ```
 
@@ -211,6 +201,7 @@ interface UnicityService {
   /**
    * Verify inclusion proof
    * Corresponds to $\univer(k, v, \pi)$ from the paper
+   * A standalone function to verify self-contained proof in reality
    */
   verifyInclusionProof(
     stateId: StateId,
@@ -229,96 +220,23 @@ interface UnicityService {
  * Complete token with full transaction history
  */
 interface Token {
+  /** Protocol version */
+  version: string;
+
   /** Current state of the token */
   currentState: TokenState;
 
   /** Genesis/mint transaction that created the token */
   genesis: CertifiedTransaction;
 
-  /** Complete history of state transitions */
+  /** Ordered history of state transitions */
   transactionHistory: CertifiedTransaction[];
-
-  /** Protocol version */
-  version: string;
-
-  /** Additional metadata (not part of cryptographic verification) */
-  metadata?: Record<string, any>;
 }
 ```
 
-## Mint Transaction Specifics
+## Verification
 
-### Mint Transaction Creation
-
-```typescript
-/**
- * Special handling for mint transactions
- * Uses fixed public minter key pair $(pk_mint, sk_mint)$
- */
-interface MintTransactionConfig {
-  /** Token identifier being minted */
-  tokenId: string;
-
-  /** Token type/class */
-  tokenType: string;
-
-  /** Immutable token data */
-  tokenData: string;
-
-  /** Initial owner's public key */
-  initialOwnerPublicKey: PublicKey;
-
-  /** Mint justification */
-  reason?: string;
-}
-
-/**
- * Calculate mint state hash
- * Formula: $h_st = H(id, MINT\_SUFFIX)$
- */
-function calculateMintStateHash(tokenId: string): Hash {
-  const MINT_SUFFIX = "UNICITY_MINT_SUFFIX";
-  return sha256(tokenId + MINT_SUFFIX);
-}
-```
-
-## State Transition Algorithm
-
-### Next State Calculation
-
-```typescript
-/**
- * Calculate next state hash after transaction
- * Formula: $h^i_st = H(h^{i-1}_st, x_{i-1})$
- * where $x_{i-1} = T_{i-1}.D.x$ (blinding mask from previous transaction)
- */
-function calculateNextStateHash(currentStateHash: Hash, blindingMask: BlindingMask): Hash {
-  return sha256(currentStateHash + blindingMask);
-}
-
-/**
- * Create next token state after successful transaction
- */
-function transitionTokenState(
-  currentState: TokenState,
-  transaction: CertifiedTransaction
-): TokenState {
-  const nextStateHash = calculateNextStateHash(
-    currentState.stateHash,
-    transaction.transaction.data.blindingMask
-  );
-
-  return {
-    ownerPublicKey: transaction.transaction.data.recipientPublicKey,
-    stateHash: nextStateHash,
-    auxiliaryData: transaction.transaction.data.auxiliaryData
-  };
-}
-```
-
-## Transaction Verification
-
-### Verification Algorithm
+### Transaction Verification Algorithm
 
 ```typescript
 /**
@@ -353,6 +271,154 @@ function verifyCertifiedTransaction(
   // Check 4: univer(H(pubkey, T.sthash), txhash, pi) = 1
   const stateId = calculateStateId(expectedState.ownerPublicKey, transaction.currentStateHash);
   return await unicityService.verifyInclusionProof(stateId, transactionHash, inclusionProof);
+}
+```
+
+### Token Verification Algorithm
+
+```typescript
+/**
+ * Verify a token with full transaction history
+ * Corresponds to token ledger verification from the paper
+ * Validates:
+ * 1. Genesis/mint transaction
+ * 2. All transactions in history
+ * 3. Cryptographic links between transactions (state hash evolution)
+ * 4. Current state consistency
+ * Returns true if valid, false otherwise
+ */
+async function verifyToken(
+  token: Token,
+  unicityService: UnicityService
+): Promise<boolean> {
+  // Verify genesis/mint transaction
+  if (!await verifyMintTransaction(token.genesis)) {
+    return false;
+  }
+
+  // Extract initial state from genesis transaction
+  let currentStateHash = token.genesis.transaction.currentStateHash;
+  let currentOwnerKey = token.genesis.transaction.transactionData.recipientPublicKey;
+  let currentAux = token.genesis.transaction.transactionData.recipientAuxiliaryData;
+
+  // Verify each transaction in the history sequentially
+  for (let i = 0; i < token.transactionHistory.length; i++) {
+    const certifiedTx = token.transactionHistory[i];
+    const expectedState: TokenState = {
+      ownerPublicKey: currentOwnerKey,
+      auxiliaryData: currentAux,
+      stateHash: currentStateHash
+    };
+
+    // Verify the certified transaction in the current state
+    if (!await verifyCertifiedTransaction(certifiedTx, expectedState, unicityService)) {
+      return false;
+    }
+
+    // Compute next state hash: h' = H(h, x)
+    // where x is the blinding mask from the transaction data
+    const blindingMask = certifiedTx.transaction.transactionData.blindingMask;
+    const nextStateHash = sha256(currentStateHash + blindingMask);
+
+    // Update state for next iteration
+    currentStateHash = nextStateHash;
+    currentOwnerKey = certifiedTx.transaction.transactionData.recipientPublicKey;
+    currentAux = certifiedTx.transaction.transactionData.recipientAuxiliaryData;
+  }
+
+  // Verify that final computed state matches token's current state
+  if (currentStateHash !== token.currentState.stateHash ||
+      currentOwnerKey !== token.currentState.ownerPublicKey ||
+      currentAux !== token.currentState.auxiliaryData) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Verify a mint transaction (genesis transaction for a token)
+ * Corresponds to mint transaction verification from the paper
+ * Note that actual verification steps depend on token type
+ */
+async function verifyMintTransaction(
+  certifiedTx: CertifiedTransaction,
+  unicityService: UnicityService
+): Promise<boolean> {
+  const { transaction, signature, transactionHash, inclusionProof } = certifiedTx;
+  const mintData = transaction.transactionData.mintTransactionData;
+
+  // Mint transaction must have mint data
+  if (!mintData) {
+    return false;
+  }
+
+  // Check 1: Verify state hash is derived from token ID
+  // For mint: sthash = H(tokenId, MINT_SUFFIX)
+  const expectedStateHash = sha256(mintData.tokenId + "MINT_SUFFIX");
+  if (transaction.currentStateHash !== expectedStateHash) {
+    return false;
+  }
+
+  // Check 2: Verify transaction hash = H(D_mint)
+  // For mint transactions, no commitment opening needed (unity commitment)
+  const calculatedHash = calculateTransactionHash(transaction.transactionData);
+  if (transactionHash !== calculatedHash) {
+    return false;
+  }
+
+  // Check 3: Verify signature by mint authority
+  // Mint transactions are signed by a fixed, public keypair (pubkey_mint, prikey_mint)
+  const MINT_PUBLIC_KEY = getMintAuthorityPublicKey();
+  const signatureMessage = sha256(transaction.currentStateHash + transactionHash);
+  if (!verifySignature(MINT_PUBLIC_KEY, signatureMessage, signature)) {
+    return false;
+  }
+
+  // Check 4: Verify inclusion proof with mint authority as owner
+  const stateId = calculateStateId(MINT_PUBLIC_KEY, transaction.currentStateHash);
+  if (!await unicityService.verifyInclusionProof(stateId, transactionHash, inclusionProof)) {
+    return false;
+  }
+
+  // Application-specific checks (e.g., validate mint justification)
+  // These are implemented based on the specific token type and application requirements
+  if (!validateMintJustification(mintData)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Calculate state identifier from public key and state hash
+ * Corresponds to H(pk, h_st) in the paper
+ */
+function calculateStateId(publicKey: PublicKey, stateHash: Hash): StateId {
+  return sha256(publicKey + stateHash);
+}
+
+/**
+ * Get the fixed public key of the mint authority
+ * This is a system-wide constant
+ */
+function getMintAuthorityPublicKey(): PublicKey {
+  // Implementation returns the fixed mint authority public key
+  // This is a well-known constant in the system
+  throw new Error("Not implemented - return system mint authority public key");
+}
+
+/**
+ * Validate mint justification (application-specific)
+ * This function should be implemented based on the token type and application
+ */
+function validateMintJustification(mintData: MintTransactionData): boolean {
+  // Application-specific validation logic
+  // For example:
+  // - Verify bridged asset burn/lock proof
+  // - Check authorization for minting
+  // - Validate token data format
+  throw new Error("Not implemented - implement application-specific mint validation");
 }
 ```
 
