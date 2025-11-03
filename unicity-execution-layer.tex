@@ -238,11 +238,14 @@ If $(\Omega_1,\prob_1)$ and $(\Omega_2,\prob_2)$ are probability spaces, then th
 
 \subsection{Security and Security Proofs}
 
-A \emph{cryptographic primitive} is described as a list of (parametrized) algorithms, correctness conditions (invariants), and attack scenarios. Adversaries are algorithms that participate in the security scenarios (interacting with environment) and break (are successful in the attack scenario of) the primitive with certain \emph{success} (\emph{advantage}) $\epsilon\in[0,1]$, which often is the probability of a certain logical condition about the attack scenario.
+A \emph{cryptographic primitive} is described as a list of (parametrized) algorithms (finite sequences of atomic commands), correctness conditions (invariants), and attack scenarios. Adversaries are algorithms that participate in the security scenarios (interacting with environment) and break (are successful in the attack scenario of) the primitive with certain \emph{success} (\emph{advantage}) $\epsilon\in[0,1]$, which often is the probability of a certain logical condition about the attack scenario.
 If the parameters of a cryptographic primitive are fixed, we get an \emph{instance} of the primitive.
 
+The \emph{running time} of an adversary is the number of atomic commands the adversary executes during the attack scenario. We assume that the running time includes the code upload time, i.e. the running time is always greater than the size of the algorithm. This assumption is necessary when the primitives are fixed algorithms rather than parametrized families of algorithms like in asymptotic security models, e.g. the \emph{polynomial model}. In this paper we use the \emph{exact security model} that more precisely captures the practical use of cryptography where the primitives and adversaries are fixed algorithms.
+
 Every instance $f$ of a primitive has \emph{security profile}
-which is a function $S_f\colon [0,1]\rightarrow \mathbb{N}$ that for every $\epsilon\in [0,1]$ returns a lower bound $S_f(\epsilon)$ of the running time of an adversary that is able to break the primitive with success at least $\epsilon$. Security profiles are non-decreasing, i.e.
+which is a function $S_f\colon [0,1]\rightarrow \mathbb{N}$ that for every $\epsilon\in [0,1]$ returns a lower bound $S_f(\epsilon)$ of the running time of an adversary that is able to break the primitive with success at least $\epsilon$.
+Security profiles are non-decreasing, i.e.
 $S_f(\epsilon)\le S_f(\epsilon')$ whenever $\epsilon\le \epsilon'$.
 Therefore, every adversary that breaks a primitive $f$ with success $\epsilon$ has running time $t\ge S_f(\epsilon)$.
 
@@ -250,7 +253,7 @@ Sometimes an instance of a cryptographic primitive $g$ is constructed from insta
 A \emph{security reduction} (or \emph{security proof}) is a mathematical proof that the constructed primitive $g$ hash a security profile $S_g$
 based on the security profiles $S_{f_1}, \ldots, S_{f_m}$ of $f_1, \ldots, f_m$, respectively.
 
-Usually, in such a proof, it is assumed that there is an adversary $A$ with running time $t$ that breaks $g$ with success $\epsilon$ and then the adversaries $A_1,\ldots, A_m$ are constructed based on $A$ that breaks $f_1,\ldots,f_m$ with (some unknown) successes $\epsilon_1,\ldots,\epsilon_m$, respectively, so that inequality $\epsilon\le \epsilon_1 + \ldots + \epsilon_m$ holds.
+Usually, in such a proof, it is assumed that there is an adversary $A$ with running time $t$ that breaks $g$ with success $\epsilon$ and then the adversaries $A_1,\ldots, A_m$ are constructed based on $A$ that break $f_1,\ldots,f_m$ with (some unknown) successes $\epsilon_1,\ldots,\epsilon_m$, respectively, so that inequality $\epsilon\le \epsilon_1 + \ldots + \epsilon_m$ holds.
 
 Mostly, $A_1, \ldots, A_m$ use $A$ as black-box, i.e. either call or simulate $A$ and add some computational instructions. In this paper, we only have reductions where $A$ is called only once by every $A_i$ i.e. the running times of $A_1,\ldots,A_m$ are upper-bounded by $\tau_1(t), \ldots, \tau_m(t)$, respectively, where $\tau_i$ is the computational time overhead function for constructing $A_i$ from $A$.
 Therefore, we have inequalities:
