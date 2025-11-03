@@ -491,7 +491,7 @@ Alternatively: P2PKH - allows shorter and truncated addresses, and that public k
 
 ### Aggregation (Implementation)
 
-Another version of the service, versioning based on endpoint. As tokens are not allowed to be converted to new format the service can start from blank state.
+Another version of the service, versioning based on endpoint. As tokens are not allowed to be converted to new format the service can start from blank state. See chapter below for details.
 
 ### Serialization, Token Format
 
@@ -510,3 +510,24 @@ Use case 2: whoever is 1st to grab a name owns it. Needs sybil, name hoarding pr
 ### Versioning
 
 Version number at highest level of token container structure. No versioning inside. Unicity service is versioned using endpoint uri; different versions' state do not overlap.
+
+
+## Aggregation Service
+
+This section describes the Unicity Service, also known as the Aggregation Layer at the infrastructure level.
+
+### Versioning
+
+Different protocol versions use separate endpoint URIs and maintain independent state spaces.
+
+### Data
+
+The Unicity Service maintains a key-value store `R` where:
+- **Keys** are state identifiers: `StateId = H(publicKey, stateHash)`
+- **Values** are transaction data hashes: `transactionHash`
+
+The service processes certification requests `Q = (publicKey, stateHash, transactionHash, signature)` by:
+1. Verifying the digital signature
+2. Checking that the state hasn't been spent before (uniqueness)
+3. Recording the mapping if valid: `R[H(publicKey, stateHash)] ← transactionHash`
+4. Returning an inclusion proof `π` of the registered state transition (after round completion)
