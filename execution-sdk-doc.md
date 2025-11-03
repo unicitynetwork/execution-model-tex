@@ -458,3 +458,55 @@ sequenceDiagram
     Bob->>Bob: Update token state
 ```
 
+## Related Concepts
+
+Let's keep it modular. These are related components, there should be plug-in interface.
+
+### Token Payload
+
+Token Payload - let's copy the minimum of legacy SDK (except multiple fungible assets in one token). See `MintTransactionData` above.
+
+### Token Split
+
+Just like the legacy SDK. In order to burn input token, we send it to public key `0`. This corresponds to trivially insecure private key; likely libraries will not accept it -- an extra safety net.
+
+### Bridging PoW Alpha
+
+Document the justification content. For PoW it will be
+
+- Block number of burn / last tx
+- Hash chain from burn / last tx to block header
+
+It is assumed that verifier runs their own full PoW blockchain node.
+
+### Bridging External Assets
+
+Depends on the source blockchain. E.g., at Solana case it makes sense to check TX status directly using an RPC call.
+
+### Address Format
+
+Initially just public key in base58 (or whatever Bitcoin is using) in ux; pubkey serialization elsewhere.
+
+Alternatively: P2PKH - allows shorter and truncated addresses, and that public key is released only moments before sending the transaction, reducing the exposure window (threat model is aliens with quantum computers).
+
+### Aggregation (Implementation)
+
+Another version of the service, versioning based on endpoint. As tokens are not allowed to be converted to new format the service can start from blank state.
+
+### Serialization, Token Format
+
+Suggestion: let's have a prototype ready: with efficient data structures and serialization format, supporting minimal data copying and memory allocations, based on developers' best judgement, and then document it and adjust if necessary so that token-compatible SDK-s can be produced based on spec alone.
+
+### Programmable Spending Conditions (Predicates)
+
+Universal, programmable predicates is a longer term goal. Right now focus on simplicity.
+
+### Naming System (Name Tags)
+
+Use case 1: there is a 3rd party certifying name-pubkey pairs. Needs a revocation system and a lookup service.
+
+Use case 2: whoever is 1st to grab a name owns it. Needs sybil, name hoarding protection, e.g. economic.
+
+### Versioning
+
+Version number at highest level of token container structure. No versioning inside. Unicity service is versioned using endpoint uri; different versions' state do not overlap.
