@@ -48,6 +48,13 @@
 
 \newcommand{\prob}[0]{\mathsf{Pr}} % probability function
 
+\newcommand{\predi}[0]{\nu}
+\newcommand{\systime}[0]{\tau}
+\newcommand{\newtime}[0]{\mathsf{NT}}
+\newcommand{\exttime}[0]{\mathsf{time}}
+\newcommand{\prgen}[0]{\mathsf{G}_\mathsf{pr}}
+\newcommand{\prsig}[0]{\mathsf{S}_\mathsf{pr}}
+
 \title{ The Unicity Execution Layer }
 \author{Ahto Buldas \and Ahto Truu \and Risto Laanoja \and Vladimir Rogojin}
 \date{September 2025}
@@ -55,6 +62,12 @@
 \begin{document}
 
 \maketitle
+
+\begin{abstract}
+This paper introduces the Unicity Execution Layer, a modular component of the Unicity framework enabling secure off-chain transactions while maintaining trustless double-spending prevention. We present a formal security model where token ownership is represented by public keys and transfers require digital signatures. We prove three fundamental security properties: (1) no double-spending---each token state can be spent at most once, (2) no blocking---only the legitimate owner can prevent a token from being spent, and (3) service-side privacy---the Unicity Service cannot link transactions with the same token.
+
+We extend this model in two directions. First, we generalize ownership to programmable spending conditions called \emph{predicates}, enabling smart-contract like functionality executed off-chain directly by relying parties rather than by consensus participants. We prove that all three security properties are preserved under reduction to predicate family unforgeability. Second, we present multi-public-key signature schemes that allow one secret to generate multiple unlinkable public keys, enabling efficient private transactions with stable public identity while eliminating key management overhead. This work provides the formal foundation for a scalable, privacy-preserving blockchain architecture that moves transaction execution off-chain while maintaining security guarantees typical to public permissionless blockchains.
+\end{abstract}
 
 \section{Introduction}
 
@@ -67,6 +80,16 @@ By minimizing the data that must be processed by the consensus layer, Unicity ac
 Our approach differs fundamentally from existing scaling solutions. Rather than optimizing transaction throughput within the constraints of traditional blockchain architectures, Unicity reconceptualizes the shared server-side functionality as a minimal, trustless service which prevents double-spending. This architectural shift enables transactions to occur off-chain and, with hardware-based unicity-proving functionality, completely offline, while maintaining cryptographic guarantees against fraud.
 
 The contributions of this paper include: (1) a formal security model for off-chain transactions with on-chain double-spending prevention, modeled as trusted service in this paper's scope, (2) cryptographic protocols ensuring transaction privacy and preventing attacks of blocking token spending, and (3) formal proofs of these security properties.
+
+\paragraph{Paper Structure}
+After introduction, Sections~\ref{sec:infrastructure}--\ref{sec:privacy} present the core Unicity infrastructure with signature-based token ownership ($\sigver(\pubkey, m, \sigma) = 1$), proving three core security properties: no double-spending, no blocking, and service-side privacy (transaction unlinkability).
+
+The paper then presents two extensions. Section \ref{sec:wallet-privacy} addresses user-side privacy through multi-public-key (MPK) signature schemes: a theoretical framework where one secret generates multiple unlinkable public keys, followed by concrete instantiation for ECDSA, and a protocol enabling efficient private transactions with persistent public identity.
+
+Section \ref{sec:predicates} generalizes ownership to arbitrary predicates $\predi(\tau, m, \sigma)$ encoding programmable spending conditions---enabling smart-contract like functionality executed off-chain directly by relying parties. Since user-chosen predicates may be weak or unsatisfiable, the no-blocking property requires reformulation. We prove all three security properties are preserved under reduction to predicate family unforgeability.
+
+
+\section{System Overview}\label{sec:overview}
 
 \subsection{Motivation}
 
@@ -96,11 +119,7 @@ Unicity as a transacting framework provides three essential guarantees: (1) \emp
 
 By decoupling transaction execution from consensus, Unicity enables new use cases previously impractical on traditional blockchains. Transactions can occur entirely off-chain, requiring no network connectivity at the time of execution. Multiple parties can transact directly using any communication channel, from internet protocols to physical media exchange. The resulting system scales linearly with the number of participants rather than facing the quadratic complexity growth of traditional blockchain networks.
 
-\subsection{Unicity Protocol}
-
-The Unicity execution framework relies on the \emph{Unicity Service} that maintains a global, append-only registry of spent token states. Each digital token has an associated state hash that uniquely identifies its current ownership and transaction history. When a token owner wishes to transfer ownership, they create a signed transaction that references the current state and specifies the new owner.
-
-\subsubsection{System Architecture}
+\subsection{Architecture}
 
 Unicity employs a hierarchical architecture that provides top-to-bottom decentralization and scalability, as illustrated in Figure~\ref{fig:layers}.
 
@@ -124,11 +143,14 @@ The three layers serve distinct functions:
 
 \item \textbf{Aggregation Layer} implements the Unicity Service, maintaining a global append-only registry of spent token states. It provides inclusion and non-inclusion proofs, processes state certification requests, and with these services allows Execution Layer to avoid the risk of double-spending. The layer is sharded for scalability, clustered for high availability, and uses cryptographic consistency proofs to maintain trustless operation.
 
-\item \textbf{Execution Layer} handles transaction processing, smart contract execution (implemented through orchestrated execution of programmable stateful spending conditions) and business logic. This layer operates off-chain and is managed by users and agents who are interested parties in transaction validation and ordering.
+\item \textbf{Execution Layer} handles transaction processing, smart contract execution (implemented through orchestrated execution of programmable stateful spending conditions, called \emph{predicates} in Section~\ref{sec:predicates}), and business logic. This layer operates off-chain and is managed by users and agents who are interested parties in transaction validation and ordering.
 \end{itemize}
 
-\subsubsection{Protocol Participants}
+\subsection{Unicity Service Protocol}
 
+The Unicity execution framework relies on the \emph{Unicity Service} that maintains a global, append-only registry of spent token states. Each digital token has an associated state hash that uniquely identifies its current ownership and transaction history. When a token owner wishes to transfer ownership, they create a signed transaction that references the current state and specifies the new owner.
+
+\paragraph{Protocol Participants}
 Within this architecture, the protocol involves three entities:
 
 \begin{itemize}
@@ -139,8 +161,7 @@ Within this architecture, the protocol involves three entities:
 \item \textbf{Recipients} are the relying parties who receive token transfers and must verify the authenticity of transactions cryptographically before accepting ownership.
 \end{itemize}
 
-\subsubsection{Transaction Structure}
-
+\paragraph{Transaction Structure}
 Each transaction $T = (\sthash, D)$ consists of:
 \begin{itemize}
 \item $\sthash$: the current state hash of the token being transferred
@@ -149,50 +170,67 @@ Each transaction $T = (\sthash, D)$ consists of:
 
 \noindent To prevent information leakage, the transaction data $D$ is committed using a perfectly hiding commitment scheme, producing a transaction data hash $\txhash = \commitc(H(D))$. The sender signs $H(\sthash, \txhash)$ and submits a certification request $Q = (\pubkey, \sthash, \txhash, \sigma)$ to the Unicity Service.
 
-\subsubsection{Double-Spending Prevention}
-
+\paragraph{Double-Spending Prevention}
 The Unicity Service processes certification requests by checking that (1) the digital signature is valid and (2) the key $H(\pubkey, \sthash)$ has not been previously registered. If both conditions hold, the service records the mapping $R[H(\pubkey, \sthash)] \gets \txhash$ and returns an inclusion proof $\pinc$. This mechanism ensures that each token state can be spent at most once.
 
 The transaction flow is illustrated by the sequence diagram (Fig.~\ref{fi:unicity-transaction}).
 
-\begin{figure}[htb]
+\begin{figure}[!htb]
     \begin{center}
-        \begin{sequencediagram}
-            \newthread{S}{Sender}
-            \newinst[2]{R}{Recipient}
-            \newinst[2]{US}{Unicity Service}
+  \begin{sequencediagram}
+      \newthread{S}{Sender}
+      \newinst[2]{R}{Recipient}
+      \newinst[2]{US}{Unicity Service}
 
-            % Recipient generates keys and parameters
-            \begin{call}{R}{Setup}{R}{}
-            \end{call}
+      % Sender needs to have a token to transfer
+      \begin{call}{S}{Obtain token}{S}{}
+      \end{call}
 
-            % Recipient sends public key to sender
-            \begin{messcall}{R}{$\pubkey'$}{S}
-            \end{messcall}
+      % Recipient generates keypair
+      \prelevel
+      \prelevel
+      \begin{call}{R}{Generate keypair}{R}{}
+      \end{call}
 
-            % Sender creates transaction data
-            \begin{call}{S}{Prepare tx data}{S}{}
-            \end{call}
-            % Sender requests certification from Unicity Service
-            \begin{messcall}{S}{$Q = (\pubkey, \sthash, \txhash, \sigma)$}{US}
-                \begin{call}{US}{
-                  Validate and set
-                  %R[H(\pubkey, \sthash)] \gets \txhash$
-                    }{US}{}
-                \end{call}
+      % Recipient shares public key
+      \begin{messcall}{R}{Public key $\pubkey'$}{S}
+      \end{messcall}
 
-            \end{messcall}
-            \begin{messcall}{US}{$\pinc$}{S}
-            \end{messcall}
+      \postlevel
+      \begin{call}{S}{\shortstack[l]{
+                Create transaction $T$\\
+                Sign with own $\prikey$}}{S}{}
+      \end{call}
 
-            % Sender sends certified transaction to recipient
-            \begin{messcall}{S}{$(T, \sigma, \txhash, d, \pinc)$}{R}
-            \begin{call}{R}{Validate the tx}{R}{}
-            \end{call}
-            \end{messcall}
+      % Sender requests certification
+      \begin{messcall}{S}{Certification request $Q$}{US}
+          \postlevel
+          \begin{call}{US}
+            {\shortstack[l]{
+              Check signature\\
+              Check not spent\\
+              Record spent state}
+            }{US}{}
+          \end{call}
+      \end{messcall}
 
-        \end{sequencediagram}
-        \caption{Simplified Unicity transaction flow.}\label{fi:unicity-transaction}
+      \prelevel
+      \begin{messcall}{US}{Inclusion proof $\pinc$}{S}
+      \end{messcall}
+
+      % Sender forwards certified transaction
+      \begin{messcall}{S}{Certified transaction}{R}
+          \postlevel
+          \begin{call}{R}
+            {\shortstack[l]{
+              Verify signature\\
+              Verify proof\\
+              Accept token}
+            }{R}{}
+          \end{call}
+      \end{messcall}
+  \end{sequencediagram}
+  \caption{Simplified Unicity transaction flow.}\label{fi:unicity-transaction}
     \end{center}
 \end{figure}
 
@@ -494,7 +532,7 @@ that is initially nowhere defined (i.e. $\phi[x]=\bot$ for every $x\in X$) and e
 
 
 
-\section{Unicity Infrastructure}
+\section{Unicity Infrastructure}\label{sec:infrastructure}
 
 Unicity infrastructure is about maintaining identifiable digital assets called \emph{tokens}. For example, tokens can represent units of digital currency.
 
@@ -507,7 +545,7 @@ As nothing prevents copying of digital information, some additional components a
 
 In this section, we assume that $(\keygen, \sig, \sigver)$ is a signature scheme and $H$ is a hash function.
 
-\subsection{Unicity Service}
+\subsection{Unicity Service}\label{sec:unicity-service}
 
 We first model the Unicity Service as an ideal functionality, and later discuss how to implement such a service in a secure and efficient way.
 
@@ -596,7 +634,7 @@ A tuple $(T,\sigma,\txhash,d,\pi)$ is said to be \emph{certified in state} $(\pu
 \end{definition}
 
 
-\subsection{Mint Transaction}
+\subsection{Mint Transaction}\label{sec:mint-transaction}
 
 Mint transaction is the first transaction with every token. Mint transaction assigns a unique \emph{Token Identifier} $\mathsf{id}$ and some more application-specific data fields, like a \emph{Mint Justification}, packed into the auxiliary data $\auxd$.
 
@@ -643,7 +681,7 @@ where $(T_0, \sigma_0, \pi_0)$ is a certified mint transaction and for every ind
 \item $h^{i}_\mathsf{st}=H(h^{i-1}_\mathsf{st},x_{i-1})$ where $x_{i-1} =T_{i-1}.D.x$.
 \end{enumerate}
 
-\section{Security}
+\section{Security}\label{sec:security}
 Consider a token with the state $S = (\pubkey, \sthash)$. The transfer protocol ensures the following properties:
 \begin{itemize}
 \item \emph{No blocking}:
@@ -658,7 +696,7 @@ Therefore, both proofs are also valid if the commitment scheme is trivial (i.e. 
 
 
 
-\subsection{Security against Blocking}
+\subsection{Security against Blocking}\label{sec:blocking}
 
 A blocking adversary $A$ uses two oracles:
 \begin{enumerate}
@@ -749,7 +787,7 @@ S_\mathsf{block}(\epsilon) = \tau^{-1}_\mathsf{coll}(S(\epsilon/2)) =
 is a security profile of the Unicity Service against blocking.
 \end{proof}
 
-\subsection{Security against Double-Spending}
+\subsection{Security against Double-Spending}\label{sec:double-spending}
 
 A double-spending adversary uses $\unisrv$ as an oracle. \medskip
 
@@ -855,7 +893,7 @@ $T_1=(\sthash,D_1)$ and $T_2=(\sthash,D_2)$ with $T_1.D.\pubkey'\neq T_2.D.\pubk
 
 \noindent Therefore, such a $\unisrv$ is insecure against double-spending.
 
-\section{Service Side Privacy}
+\section{Service Side Privacy}\label{sec:privacy}
 
 Unicity service $\unisrv$ obtains information about the transactions $T=(\sthash,D)$ with tokens via the queries $Q=(\pubkey, \sthash, \txhash,\sigma)$. We want to ensure that $\unisrv$ does not learn too much about the contents and context of transactions, for example, which transaction belongs to which token.
 
@@ -875,7 +913,7 @@ We do not want $\unisrv$ to be able to associate $Q$ and $Q'$ as two consecutive
 \noindent Note that if $\ell$ is large, then $H(\sthash,x)$ with $x\gets \{0,1\}^\ell$ may give very little information about the previous state hash $\sthash$.
 For example, an extreme case is that if $\ell=k$ and the function $H(h,\cdot)\colon \{0,1\}^k\rightarrow \{0,1\}^k$ happens to be one-to-one for every $h$ (which most likely never happens for practical hash functions), then in fact $H(\sthash,x)$ gives no information on $\sthash$  because the equation $H(h,x)=\sthash'$ can be (uniquely) solved for every state hash $h$ that $\unisrv$ has stored or memorized. In practice, there is no need to choose a very large $\ell$ as practical security is possible if $\ell$ is much smaller than $k$.
 
-\subsection{Security against Association}
+\subsection{Security against Association}\label{sec:association}
 
 The Association adversary $A=(A_1,A_2)$ is two-stage. \medskip
 
@@ -945,6 +983,8 @@ At the same time, there seem to be no obvious ways of proving that such a simpli
 Still, it may be a plausible practical assumption that given $\sthash$ and the next state hash $\sthash'=H(\sthash,x)$ and $\txhash = H(\pubkey',x,\auxd')$ it is infeasible to find $x'$ so that $H(\sthash,x')=\sthash'$. At least for example, if $H$ is \textsf{SHA-256}, there seem to be no obvious ways how to do it if $x$ has sufficiently many random bits.
 
 \include{unicity-private-wallet}
+
+\include{unicity-predicates}
 
 
 % \include{unicity-programming}

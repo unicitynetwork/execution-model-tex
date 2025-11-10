@@ -1,12 +1,14 @@
-\section{Introduction}
+\section{Predicates: Programmable Spending Conditions}\label{sec:predicates}
 
-Predicates generalize the concepts of token ownership and transfer in the Unicity infrastructure, which in the paper \cite{BTLR25} were defined via digital signatures as follows:
+\subsection{Introduction}
+
+Predicates generalize the concepts of token ownership and transfer in the Unicity infrastructure, which in Sections~\ref{sec:infrastructure}--\ref{sec:privacy} were defined via digital signatures as follows:
 \begin{itemize}
 \item \emph{Owner} -- a (legal/physical) person who controls the private key of a digital signature scheme
 \item \emph{Ownership condition} -- the public key $\pubkey$ that corresponds to the private key of the owner.
 \item \emph{Transfer} -- the owner presents a digital signature $\sigma$ on $m=H(\sthash,\txhash)$ (where $\sthash,\txhash$ are the state hash and the transaction hash, respectively) such that $\sigver(\pubkey,m,\sigma)=1$.
 \end{itemize}
-In this paper, we present the following generalized concepts:
+In this section, we present the following generalized concepts:
 \begin{itemize}
 \item \emph{Owner} -- an abstract group of (legal/physical) persons that together control the information necessary to create the next transaction with the token. The information may include private keys.
 \item \emph{Ownership condition} -- a logical condition (predicate) $\predi$.
@@ -20,7 +22,7 @@ The predicates approach is certainly not new and is used already in the Bitcoin 
 
 A typical example of a generalized predicate is the \emph{delayed execution} predicate defined by $\predi(\systime,m,\sigma)\equiv \mathsf{dex}_{\pubkey,\systime_0}(\systime,m,\sigma) \equiv (\systime\ge\tau_0)\;\wedge\; \sigver(\pubkey,m,\sigma)=1$, which states that the next transaction can be executed by the owner of the private key of $\pubkey$ not earlier than $\systime_0$. The delayed execution predicate is used in the protocols for inter-blockchain \emph{atomic swaps} between Bitcoin type blockchains.
 
-It is a natural question whether the security properties (no double spending, no blocking, no association) will still hold in the Unicity infrastructure if the generalized predicates are in use. We will show in this paper that double-spending is indeed impossible in the generalized scheme. However, the non-blocking condition is much less obvious.
+It is a natural question whether the security properties (no double spending, no blocking, no association) will still hold in the Unicity infrastructure if the generalized predicates are in use. We will show shortly that double-spending is indeed impossible in the generalized scheme. However, the non-blocking condition is much less obvious.
 
 The main concern is that arbitrarily chosen predicates do not have guaranteed security properties like the UF-CMA condition for digital signatures. For example, if a user chooses the ownership predicate $\predi(\systime,m,\sigma)\equiv (\sigma^2 - 2\sigma + 1=0)$ then anyone who is able to solve quadratic equations can make the next transfer with the token and hence, the no-blocking condition may seem to be violated. On the other hand, by intentionally  choosing such an ownership condition, the previous owner may indicate that the next abstract owner of the token is the group of all people who can efficiently solve quadratic equations, and in this sense, intuitively, the no blocking condition is not violated.
 
@@ -34,11 +36,11 @@ $(\systime_1,m_1,\sigma_1),\ldots,(\systime_n,m_n,\sigma_n)$ (so that $\predi(\s
 Therefore, the precise mathematical formulation of the no-blocking condition -- \emph{only the owner of the private key of $\pubkey$ can block the state $S=(\pubkey,\sthash)$} -- must be revisited. We will redefine the no-blocking condition as follows -- \emph{only those who can solve the predicate $\predi$ can block the state $S=(\predi,\sthash)$}, where by solving $\predi$ we mean finding, for a given $m$, a pair $(\systime,\sigma)$ so that $\predi(\systime,m,\sigma)=1$.
 In this paper, we will make this security definition precise and prove that it holds in the Unicity infrastructure. Intuitively, this means that undesired blocking can happen only because of the weakness of the user-chosen predicates and never because of the structural weakness of the Unicity infrastructure itself.
 
-\section{Unicity Infrastructure with Predicates}
+\subsection{Unicity Infrastructure with Predicates}
 
-\subsection{Unicity Service}
+\subsubsection{Unicity Service}
 
-Like in the paper \cite{BTLR25} we model the Unicity Service as an ideal functionality, where we use \emph{system time} as an additional state variable.
+Like in Section~\ref{sec:unicity-service} we model the Unicity Service as an ideal functionality, where we use \emph{system time} as an additional state variable.
 The \emph{Unicity Service} $\unisrv$ is modeled as a state machine with state $(R,\systime)$, where:
 \begin{itemize}
 \item $R$ is a key-value store (dictionary), where both keys and values are of type $\bits{|k|}$. Initially, $R = \emptyset$. We will write $R[k] = \bot$ if there are no pairs $(k, v)$ stored in $R$.
@@ -81,21 +83,21 @@ $\{(k, v), (k, v')\} \subseteq R$ implies $v = v'$.
 
 We say that a key $k$ is \emph{blocked} if $R[k] \neq \bot$.
 
-\subsection{Verification Function}
+\subsubsection{Verification Function}
 
 We assume that the inclusion proofs $\pinc$ contain the system time $\systime$, i.e. the value of $\systime$ when the corresponding new element was set in $R$. There is an extraction function $\exttime$ that
 extracts the system time from the proof $\pinc$, i.e. $\systime\gets \exttime(\pinc)$.
 We assume that the inclusion proofs $\pinc$ can be verified by any party using a verification function $\univer$ so that:
 \begin{itemize}
 \item If $\univer(k, v; \pinc) = 1$ then $R[k] = v$ in the current state $(R,\systime)$ of $\unisrv$. Hence, as $R$ is a partial function, for every $k, v, v', \pinc, \pinc'$, the following implication holds:
-\begin{equation}\label{eq:eqtx}
+\begin{equation}\label{eq:eqtx-pred}
 \univer(k, v; \pinc) = \univer(k, v'; \pinc') = 1 \quad \Rightarrow \quad v =v' \enspace.
 \end{equation}
 \item If $R[H(\predi, \sthash)] = \txhash$ after a request $\pinc \gets \unisrv(\predi, \sthash, \txhash, \sigma)$ to the Unicity Service, then $\univer(H(\predi, \sthash), \txhash, \pinc) = 1$.
 \item If a request $\pinc\gets\unisrv(Q)$ was processed in the state $S=(R,\systime)$ that changes $R[H(\predi, \sthash)]$ from $\bot$ to $\neq\bot$, then $\exttime(\pinc)=\systime$.
 \end{itemize}
 
-\subsection{Transactions with a Token}
+\subsubsection{Transactions with a Token}
 
 Every token has an abstract owner $A$ represented by a predicate $\predi$. We will call the pair $(\predi, \auxd)$ the \emph{state} of the token and $\sthash = H(\predi, \auxd)$ the state hash of the token.
 
@@ -139,13 +141,13 @@ If at least one of the following checks fail, return 0, otherwise return 1:
 \item $\univer(H(\predi,T.\sthash),\txhash,\pi)=1$.
 \end{enumerate}
 
-\begin{definition}[certification in a state]\label{de:certstate}
+\begin{definition}[certification in a state]\label{de:certstate-pred}
 A tuple $(T,\sigma,\txhash,d,\pi)$ is said to be \emph{certified in state} $(\predi,h)$ iff $\certver(T,\sigma,\txhash,d,\pi;\predi,h)=1$.
 \end{definition}
 
-Mint transactions are the same as in the paper ["Unicity Execution Layer"], i.e. they do not use generalized predicates.
+Mint transactions are the same as in Section~\ref{sec:mint-transaction}, i.e. they do not use generalized predicates.
 
-\subsection{Token Ledger}
+\subsubsection{Token Ledger}
 
 A \emph{token ledger} is a sequence
 \[
@@ -157,7 +159,7 @@ where $(T_0, \sigma_0, \pi_0)$ is a certified mint transaction and for every ind
 \item $h^{i}_\mathsf{st}=H(h^{i-1}_\mathsf{st},x_{i-1})$ where $x_{i-1} =T_{i-1}.D.x$.
 \end{enumerate}
 
-\section{Security}
+\subsection{Security}
 
 Consider a token with the state $S = (\predi, \auxd)$. The transfer protocol ensures the following properties:
 \begin{itemize}
@@ -168,10 +170,10 @@ Only one certified transaction can be created in the state $S$.
 Only the owner of the private key of $\predi$ can block the state $S = (\predi, \auxd)$ if it was not blocked before.
 \end{itemize}
 
-\noindent In this section, we present security proofs for all three properties. The proofs of no double-spending and no association are very similar to the proofs in \cite{BTLR25}. The no blocking property
+\noindent In this section, we present security proofs for all three properties. The proofs of no double-spending and no association are very similar to the proofs in Sections~\ref{sec:security}--\ref{sec:privacy}. The no blocking property
 had to be modified to cover arbitrary predicates.
 
-\subsection{Security against Double-Spending}
+\subsubsection{Security against Double-Spending}
 
 A double-spending adversary uses $\unisrv$ as an oracle. \medskip
 
@@ -179,7 +181,7 @@ A double-spending adversary uses $\unisrv$ as an oracle. \medskip
 \begin{enumerate}
 \item $(T,\sigma,\txhash,d,\pinc),(T',\sigma',\txhash',d',\pinc'),(\predi,h)\gets A^\unisrv$.
 \item The attack is successful iff $T\neq T'$ and
-\begin{equation}\label{eq:dscond}
+\begin{equation}\label{eq:dscond-pred}
 \certver(T,\sigma,\txhash,d,\pinc;\predi,h)=\certver(T',\sigma',\txhash',d',\pinc';\predi,h)=1 \enspace.
 \end{equation}
 \end{enumerate}
@@ -189,13 +191,13 @@ The Unicity Service is said to be $S$-secure against double-spending if it has $
 \end{definition}
 
 \noindent\textbf{Analysis}: If the adversary is successful, then
-from (\ref{eq:dscond}) and the definition of $\certver$ it follows that
+from (\ref{eq:dscond-pred}) and the definition of $\certver$ it follows that
 $T.\sthash = T'.\sthash=h$ and:
 \begin{eqnarray*}
 \univer(H(\predi, h), \txhash; \pinc) = \univer(H(\predi, h), \txhash'; \pinc') = 1\enspace,
 \end{eqnarray*}
-which implies $\txhash=\txhash'$ by equation~(\ref{eq:eqtx}).
-From Def.~\ref{de:certstate} it also follows that
+which implies $\txhash=\txhash'$ by equation~(\ref{eq:eqtx-pred}).
+From Def.~\ref{de:certstate-pred} it also follows that
 $\open(\txhash,d)=H(T.D)$ and $\open(\txhash,d')=\open(\txhash',d')=H(T'.D)$.
 From $(h,T.D)=(T.\sthash,T.D)=T\neq T'=(T'.\sthash,T'.D)=(h,T'.D)$ it follows that $T.D\neq T'.D$. Hence, we have two cases:
 \begin{itemize}
@@ -236,7 +238,7 @@ S_\mathsf{double}(\epsilon) = \tau^{-1}_\mathsf{coll}(S(\epsilon/2)) =
 is a security profile of the Unicity service against double-spending.
 \end{proof}
 
-\subsection{Security against Association}
+\subsubsection{Security against Association}
 
 The Association adversary $A=(A_1,A_2)$ is two-stage. \medskip
 
@@ -298,7 +300,7 @@ S_\mathsf{assoc}(\epsilon) = \tau^{-1}(S(\epsilon)) = S(\epsilon) - t_\mathsf{sm
 is a security profile of the Unicity service against association.
 \end{proof}
 
-\subsection{Security against Blocking}
+\subsubsection{Security against Blocking}
 
 By a predicate family we mean a pair $(\prgen,\prsig)$ of algorithms so that:
 \begin{itemize}
