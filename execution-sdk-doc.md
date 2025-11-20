@@ -28,13 +28,13 @@ interface TokenState {
   /** Current owner's public key ($pk$ in paper) */
   ownerPublicKey: PublicKey;
 
-  /** Optional auxiliary data for this state ($aux$ in paper) */
-  auxiliaryData?: string; // hex-encoded bytes
+  /** $h_{st}$ - rolling identifier of the token state being spent, at genesis
+   *  h_st_0 = h(id, MINT_SUFFIX), then h_st_{i+1} = h(x, h_st_i) */
+  stateHash: Hash;
 }
 
 /**
  * State identifier uniquely identifies a token state
- * Calculated as: stateId = H(pk || h_st)
  * Corresponds to $H(pk, h_st)$ in the paper
  */
 type StateId = Hash;
@@ -55,7 +55,7 @@ interface TransactionData {
   recipientPublicKey: PublicKey;
 
   /** Random blinding mask for privacy and state evolution ($x$ in paper) */
-  blindingMask: BlindingMask;
+  blindingMask: BlindingMask;  // NULL if mint transaction
 
   /** Auxiliary data for the next token state ($aux'$ in paper) */
   recipientAuxiliaryData: string; // hex-encoded bytes

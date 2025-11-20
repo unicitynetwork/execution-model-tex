@@ -57,7 +57,7 @@
 
 \title{ The Unicity Execution Layer }
 \author{Ahto Buldas \and Ahto Truu \and Risto Laanoja \and Vladimir Rogojin}
-\date{September 2025}
+\date{November 2025}
 
 \begin{document}
 
@@ -591,7 +591,8 @@ We assume that the inclusion proofs $\pinc$ can be verified by any party using a
 
 \subsection{Transactions with a Token}
 
-Every token has a state hash $\sthash = (\pubkey, \auxd)$ and an owner $A$ with a public key $\pubkey$. We will call the pair $(\pubkey, \auxd)$ a \emph{state} of the token.
+Every token has a \emph{state hash} $\sthash$ and an owner $A$ represented by a public key $\pubkey$. The state hash $\sthash$ is initialized by the \emph{mint transaction} of the token (Sec.~\ref{sec:mint-transaction}).
+We will call the pair $(\pubkey, \sthash)$ the \emph{state} of the token.
 Every (unsigned) transaction with the token is a pair
 $T = (\sthash, D)$, where:
 \begin{enumerate}
@@ -602,9 +603,12 @@ $T = (\sthash, D)$, where:
 \item $x$: a uniformly chosen random string $x\gets\{0,1\}^\ell$,
 \item $\auxd'$: other data for the next state.
 \end{itemize}
+\item The next state hash $\sthash'$ is computed by $\sthash'\gets H(\sthash,x)$. The pair $(\pubkey', \sthash')$ defines the next state of the token after executing the transaction $T$.
 \end{enumerate}
+The main idea of the state is that the transaction $T$ with a token is possible only if its current state $(\pubkey,\sthash)$ is \emph{not spent}, i.e. $R[H(\pubkey,\sthash)]=\bot$. When executed, $T$ \emph{spends} the state $(\pubkey,\sthash)$ by sending a request $Q=(\pubkey,\sthash,\txhash,\sigma)$ to $\unisrv$, i.e. $R[H(\pubkey,\sthash)]=\txhash\neq\bot$ after execution and hence, no other transactions in the same state are possible.
 
-The pair $(\pubkey', \auxd')$ defines the next state of the token after executing the transaction $T$.
+The next state $(\pubkey',\sthash')$ should be a non-spent state, i.e. $R[H(\pubkey',\sthash')]=\bot$ for the next transactions with the same token being possible. This is guaranteed by the one-wayness and collision-resistance of the hash function $H$. As $x$ is chosen randomly and is not visible by $\unisrv$ and moreover, it is protected by a perfectly hiding commitment scheme, it is not possible for $\unisrv$ to associate the current state and the next state of the token.
+\medskip
 
 \noindent\textbf{Certifying a transaction} $T = (\sthash, D)$ involves the following steps:
 \begin{enumerate}
@@ -613,7 +617,7 @@ The commitment $\txhash$ is called the \emph{transaction data hash}.
 \item The hash value $h_T = H(\sthash, \txhash)$ is computed.
 \item A digital signature $\sigma \gets \sig(\prikey, h_T)$ is created with the private counterpart $\prikey$ of $\pubkey$, i.e. $\mathsf{V}(\pubkey, h_T, \sigma) = 1$.
 %\item A \emph{signed transaction} $(T,\sigma,d)$ is formed.
-\item The query $Q = (\pubkey,\sthash,\txhash,\sigma)$ is created.
+\item The request $Q = (\pubkey,\sthash,\txhash,\sigma)$ is created.
 \item $\unisrv$ is called to obtain $\pi\gets \unisrv(Q)$.
 \item The certified transaction $(T,\sigma,\txhash,d,\pi)$ is formed.
 \end{enumerate}
@@ -638,7 +642,7 @@ A tuple $(T,\sigma,\txhash,d,\pi)$ is said to be \emph{certified in state} $(\pu
 
 Mint transaction is the first transaction with every token. Mint transaction assigns a unique \emph{Token Identifier} $\mathsf{id}$ and some more application-specific data fields, like a \emph{Mint Justification}, packed into the auxiliary data $\auxd$.
 
-A certified mint transaction is $(T_0, \sigma_0, \pi_0)$, where $T_0 = (\sthash, D_\mathsf{mint})$ and $D_\mathsf{mint}$ contains the following fields:
+A certified mint transaction is $(T_0, \sigma_0, \pi_0)$, where $T_0 = (\sthash, D_\mathsf{mint})$, $\sthash = H(\mathsf{id}, \mathsf{MINT\_SUFFIX})$ (where $\mathsf{MINT\_SUFFIX}$ a fixed constant domain separator), and $D_\mathsf{mint}$ contains the following fields:
 \begin{itemize}
     \item $\pubkey'$: the public key of the first owner;
     \item $\mathsf{id}$: the token identifier;
@@ -646,11 +650,10 @@ A certified mint transaction is $(T_0, \sigma_0, \pi_0)$, where $T_0 = (\sthash,
     \item $\auxd'$: other data of the first state.
 \end{itemize}
 
-\noindent A Mint transaction is signed by a fixed, public keypair $(\pubkey_\mathsf{mint}, \prikey_\mathsf{mint})$. This ensures the uniqueness of every token identifier. $\mathsf{MINT\_SUFFIX}$ is a fixed domain separator.\medskip
+\noindent A Mint transaction is signed by a fixed, public keypair $(\pubkey_\mathsf{mint}, \prikey_\mathsf{mint})$. This ensures the uniqueness of every token identifier. \medskip
 
 \noindent\textbf{Certifying a mint transaction} $T = (\sthash, D_\mathsf{mint})$ involves the following steps:
 \begin{enumerate}
-    \item $\sthash = H(\mathsf{id}, \mathsf{MINT\_SUFFIX})$ is computed.
 	\item $\txhash = H(D_\mathsf{mint})$ is computed.
 	\item $h_T = H(\sthash, \txhash)$ is computed.
 	\item A digital signature $\sigma \gets \sig(\prikey_\mathsf{mint}, h_T)$ is created with the (publicly known, fixed) private key $\prikey_\mathsf{mint}$.
@@ -659,10 +662,10 @@ A certified mint transaction is $(T_0, \sigma_0, \pi_0)$, where $T_0 = (\sthash,
 	\item The certified mint transaction $(T,\sigma,\pi)$ is formed.
 \end{enumerate}
 
-\noindent\textbf{Verifying a certified mint transaction} $(T,\sigma,\pi)$ (with $T=(\sthash, D_\mathsf{mint})$) in state $(\pubkey,h)$ involves the following checks:
+\noindent\textbf{Verifying a certified mint transaction} $(T,\sigma,\pi)$ involves the following checks:
 \begin{enumerate}
-	\item $\sthash=h$;
-	\item $\txhash = H(D_\mathsf{mint})$;
+	\item $T.\sthash= H(T.D_\mathsf{mint}.\mathsf{id}, \mathsf{MINT\_SUFFIX})$;
+	\item $\txhash = H(T.D_\mathsf{mint})$;
 	\item $\sigver(\pubkey_\mathsf{mint}, H(\sthash,\txhash),\sigma)=1$;
 	\item $\univer(H(\pubkey_\mathsf{mint},\sthash),\txhash,\pi)=1$.
 \end{enumerate}
@@ -673,13 +676,21 @@ A certified mint transaction is $(T_0, \sigma_0, \pi_0)$, where $T_0 = (\sthash,
 
 A \emph{token ledger} is a sequence
 \[
-(T_0, \sigma_0, \pi_0; h^1_\mathsf{st}), (T_1, \sigma_1,\txhash^1,d_1,\pi_1; h^2_\mathsf{st}), \ldots, (T_n, \sigma_n, \txhash^n, d_n,\pi_n; h^{n+1}_\mathsf{st})
+(T_0, \sigma_0, \pi_0; \pubkey^0, h^0_\mathsf{st}), (T_1, \sigma_1,\txhash^1,d_1,\pi_1; \pubkey^1, h^1_\mathsf{st}), \ldots, (T_n, \sigma_n, \txhash^n, d_n,\pi_n; \pubkey^n,h^n_\mathsf{st})
 \]
-where $(T_0, \sigma_0, \pi_0)$ is a certified mint transaction and for every index $i=1,\ldots, n$:
+where:
 \begin{enumerate}
-\item $(T_{i}, \sigma_{i}, \txhash^i,d_i, \pi_{i})$ is a certified transaction in the state $(T_{i-1}.D.\pubkey', \auxd^{i-1})$;
-\item $h^{i}_\mathsf{st}=H(h^{i-1}_\mathsf{st},x_{i-1})$ where $x_{i-1} =T_{i-1}.D.x$.
+\item $(T_0, \sigma_0, \pi_0)$ is a certified mint transaction
+\item $\pubkey^0=T_0.D_\mathsf{mint}.\pubkey'$
+\item $\sthash^{0}=H(T_0.D_\mathsf{mint}.\mathsf{id},\mathsf{MINT\_SUFFIX})$
+\item For every index $i=1,\ldots, n$:
+\begin{enumerate}
+\item[3.3.] $(T_{i}, \sigma_{i}, \txhash^i,d_i, \pi_{i})$ is a certified transaction in the state $(\pubkey^{i-1}, \sthash^{i-1})$
+\item[3.1.] $\pubkey^i = T_{i}.D.\pubkey'$
+\item[3.2.] $h^{i}_\mathsf{st}=H(h^{i-1}_\mathsf{st},T_{i}.D.x)$
 \end{enumerate}
+\end{enumerate}
+
 
 \section{Security}\label{sec:security}
 Consider a token with the state $S = (\pubkey, \sthash)$. The transfer protocol ensures the following properties:
