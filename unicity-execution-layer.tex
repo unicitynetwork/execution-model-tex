@@ -13,7 +13,7 @@
 
 \newenvironment{proof}{\textsf{Proof}.}{\hfill$\Box$}
 
-\newcommand{\bits}[1]{\{0,1\}^{#1}}
+\newcommand{\bits}[1]{{\{0,1\}^{#1}}}
 \newcommand{\negl}[0]{\mathsf{negl}} % negligible quantity
 
 \newcommand{\keygen}[0]{\mathsf{G}}
@@ -29,22 +29,22 @@
 \newcommand{\setup}[0]{\mathsf{Set}}
 \newcommand{\commit}[0]{\mathsf{Com}}
 \newcommand{\open}[0]{\mathsf{Open}}
-\newcommand{\commitc}[0]{\mathsf{Com}^{c}}
+\newcommand{\commitc}[0]{{\mathsf{Com}^{c}}}
 
 \newcommand{\param}[0]{\mathsf{par}}
 
 \newcommand{\unisrv}[0]{\mathsf{US}}
 
-\newcommand{\sthash}[0]{h_\mathsf{st}}
-\newcommand{\txhash}[0]{h_\mathsf{tx}}
+\newcommand{\sthash}[0]{{h_\mathsf{st}}}
+\newcommand{\txhash}[0]{{h_\mathsf{tx}}}
 
 \newcommand{\auxd}[0]{\mathsf{aux}}
 
 \newcommand{\univer}[0]{\mathcal{V}}
 
-\newcommand{\certver}[0]{\mathcal{V}_\mathsf{cert}}
+\newcommand{\certver}[0]{{\mathcal{V}_\mathsf{cert}}}
 
-\newcommand{\pinc}[0]{\pi_{\mathsf{inc}}}
+\newcommand{\pinc}[0]{{\pi_{\mathsf{inc}}}}
 
 \newcommand{\prob}[0]{\mathsf{Pr}} % probability function
 
@@ -52,8 +52,8 @@
 \newcommand{\systime}[0]{\tau}
 \newcommand{\newtime}[0]{\mathsf{NT}}
 \newcommand{\exttime}[0]{\mathsf{time}}
-\newcommand{\prgen}[0]{\mathsf{G}_\mathsf{pr}}
-\newcommand{\prsig}[0]{\mathsf{S}_\mathsf{pr}}
+\newcommand{\prgen}[0]{{\mathsf{G}_\mathsf{pr}}}
+\newcommand{\prsig}[0]{{\mathsf{S}_\mathsf{pr}}}
 
 \title{ The Unicity Execution Layer }
 \author{Ahto Buldas \and Ahto Truu \and Risto Laanoja \and Vladimir Rogojin}
@@ -554,7 +554,7 @@ The \emph{Unicity Service} $\unisrv$ is modeled as a state machine with state $R
 Every input request $Q$ is a tuple $(\pubkey, \sthash, \txhash, \sigma)$, where:
 \begin{itemize}
 \item $\pubkey$ of type $\bits{p}$ is a public key: the public key of the current owner of a token, i.e. the owner before the transaction with the hash $\txhash$ is executed;
-\item $\sthash$ of type $\bits{k}$ is a state hash: the hash of the state of the token before the transaction is executed;
+\item $\sthash$ of type $\bits{k}$ is a ``state hash'', a value linking subsequent token states;
 \item $\txhash$ of type $\bits{k}$ is a transaction data hash (defined later);
 \item $\sigma$ of type $\bits{s}$ is a digital signature of the transaction.
 \end{itemize}
@@ -596,7 +596,7 @@ We will call the pair $(\pubkey, \sthash)$ the \emph{state} of the token.
 Every (unsigned) transaction with the token is a pair
 $T = (\sthash, D)$, where:
 \begin{enumerate}
-\item $\sthash$ is the state hash before executing the transaction,
+\item $\sthash$ is the state hash linking the token ledger,
 \item $D$ (transaction data) contains the following fields:
 \begin{itemize}
 \item $\pubkey'$: the public key of the next owner,
@@ -641,32 +641,37 @@ A tuple $(T,\sigma,\txhash,d,\pi)$ is said to be \emph{certified in state} $(\pu
 \subsection{Mint Transaction}\label{sec:mint-transaction}
 
 Mint transaction is the first transaction with every token. Mint transaction assigns a unique \emph{Token Identifier} $\mathsf{id}$ and some more application-specific data fields, like a \emph{Mint Justification}, packed into the auxiliary data $\auxd$.
+Minting uses the following public system-specific constants:
+\begin{itemize}
+\item $\mathsf{MINT\_SUFFIX}$ -- a fixed domain separator
+\item $\pubkey_\mathsf{mint}$ -- minting public key
+\item $\prikey_\mathsf{mint}$ -- minting private key
+\end{itemize}
+Note that $\prikey_\mathsf{mint}$ is also public and is needed only for having a unified interface with $\unisrv$.
 
-A certified mint transaction is $(T_0, \sigma_0, \pi_0)$, where $T_0 = (\sthash, D_\mathsf{mint})$, $\sthash = H(\mathsf{id}, \mathsf{MINT\_SUFFIX})$ (where $\mathsf{MINT\_SUFFIX}$ a fixed constant domain separator), and $D_\mathsf{mint}$ contains the following fields:
+A certified mint transaction is $(T_0, \sigma_0, \pi_0)$, where $T_0 = (\sthash, D_\mathsf{mint})$, $\sthash = H(\mathsf{id}, \mathsf{MINT\_SUFFIX})$ where $D_\mathsf{mint}$ contains the following fields:
 \begin{itemize}
     \item $\pubkey'$: the public key of the first owner;
     \item $\mathsf{id}$: the token identifier;
 % \item $x$: a uniformly chosen random string $x\gets\{0,1\}^\ell$;
     \item $\auxd'$: other data of the first state.
 \end{itemize}
-
-\noindent A Mint transaction is signed by a fixed, public keypair $(\pubkey_\mathsf{mint}, \prikey_\mathsf{mint})$. This ensures the uniqueness of every token identifier. \medskip
+\medskip
 
 \noindent\textbf{Certifying a mint transaction} $T = (\sthash, D_\mathsf{mint})$ involves the following steps:
 \begin{enumerate}
-	\item $\txhash = H(D_\mathsf{mint})$ is computed.
-	\item $h_T = H(\sthash, \txhash)$ is computed.
-	\item A digital signature $\sigma \gets \sig(\prikey_\mathsf{mint}, h_T)$ is created with the (publicly known, fixed) private key $\prikey_\mathsf{mint}$.
-	\item The request $Q = (\pubkey_\mathsf{mint},\sthash,\txhash,\sigma)$ is created.
-	\item $\unisrv$ is called to obtain $\pi\gets \unisrv(Q)$.
-	\item The certified mint transaction $(T,\sigma,\pi)$ is formed.
+	\item $\txhash \gets H(D_\mathsf{mint})$ (perfectly hiding commitment is unnecessary for mint)
+	\item $h_T \gets H(\sthash, \txhash)$
+	\item $\sigma \gets \sig(\prikey_\mathsf{mint}, h_T)$, i.e. create a digital signature the private key $\prikey_\mathsf{mint}$.
+	\item $Q \gets (\pubkey_\mathsf{mint},\sthash,\txhash,\sigma)$, i.e. a request is created.
+	\item $\pi\gets \unisrv(Q)$, i.e. $\unisrv$ is called to obtain an inclusion proof.
+	\item Output $(T,\sigma,\pi)$ as a certified mint transaction
 \end{enumerate}
 
 \noindent\textbf{Verifying a certified mint transaction} $(T,\sigma,\pi)$ involves the following checks:
 \begin{enumerate}
-	\item $T.\sthash= H(T.D_\mathsf{mint}.\mathsf{id}, \mathsf{MINT\_SUFFIX})$;
-	\item $\txhash = H(T.D_\mathsf{mint})$;
-	\item $\sigver(\pubkey_\mathsf{mint}, H(\sthash,\txhash),\sigma)=1$;
+	\item $T.\sthash= H(T.D_\mathsf{mint}.\mathsf{id}, \mathsf{MINT\_SUFFIX})$
+	\item $\sigver(\pubkey_\mathsf{mint}, H(\sthash,\txhash),\sigma)=1$, where $\txhash = H(T.D_\mathsf{mint})$
 	\item $\univer(H(\pubkey_\mathsf{mint},\sthash),\txhash,\pi)=1$.
 \end{enumerate}
 
@@ -998,9 +1003,6 @@ Still, it may be a plausible practical assumption that given $\sthash$ and the n
 \include{unicity-predicates}
 
 
-% \include{unicity-programming}
-
-
 \begin{thebibliography}{99}
 \bibitem{Bell15} Bellare, M.: New proofs for NMAC and HMAC: Security without collision resistance.  \emph{Journal of Cryptology} 28, 844--878 (2015)
 
@@ -1016,8 +1018,8 @@ Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature alg
 
 \pagebreak
 \appendix
-\section{Detailed Transaction Sequence Diagram}
 
+\section{Sequence Diagram with Predicates}
 \begin{figure}[!h]
     \begin{center}
         \begin{sequencediagram}
@@ -1025,12 +1027,12 @@ Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature alg
             \newinst[3]{R}{Recipient}
             \newinst[2]{US}{Unicity Service}
 
-            % Recipient generates keys and parameters
-            \begin{call}{R}{$(\pubkey', \prikey') \gets \keygen$}{R}{}
+            % Recipient prepares predicate and auxiliary data
+            \begin{call}{R}{Prepare $\predi'$, $\auxd'$}{R}{}
             \end{call}
 
-            % Recipient sends public key to sender
-            \begin{messcall}{R}{$\pubkey'$}{S}
+            % Recipient sends predicate to sender
+            \begin{messcall}{R}{$\predi'$, $\auxd'$}{S}
             \end{messcall}
 
             % Sender creates transaction data
@@ -1039,45 +1041,47 @@ Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature alg
             \postlevel
             \begin{call}{S}{\shortstack[l]{
                     $x \gets \{0,1\}^\ell$     \\
-                    $D = (\pubkey', x, \auxd')$ \\
+                    $D = (\predi', x, \auxd')$ \\
                     $T = (\sthash, D)$         \\
                     $(\txhash, d) \gets \commit(H(D))$ \\
                     $h_T = H(\sthash, \txhash)$ \\
-                    $\sigma \gets \sig(\prikey, h_T)$
+                    $\sigma$ such that $\predi(\systime_\mathsf{exp}, h_T, \sigma) = 1$
                 }
                 }{S}{}
             \end{call}
 
             % Sender requests certification from Unicity Service
-            \begin{messcall}{S}{$Q = (\pubkey, \sthash, \txhash, \sigma)$}{US}
+            \begin{messcall}{S}{$Q = (\predi, \sthash, \txhash, \sigma)$}{US}
                 \postlevel
                 \begin{call}{US}{\shortstack[l]{
-                    $\sigver(\pubkey, h_T, \sigma) \stackrel{?}{=} 1$ \\
-                    $R[H(\pubkey, \sthash)] \stackrel{?}{=} \bot$ \\
-                    $R[H(\pubkey, \sthash)] \gets \txhash$
+                    $\predi(\systime, h_T, \sigma) \stackrel{?}{=} 1$ \\
+                    $R[H(\predi, \sthash)] \stackrel{?}{=} \bot$ \\
+                    $R[H(\predi, \sthash)] \gets \txhash$
                     }}{US}{}
                 \end{call}
             \end{messcall}
             \prelevel
-            \begin{messcall}{US}{$\pinc$}{S}
+            \begin{messcall}{US}{$\pinc$ (with $\systime$)}{S}
             \end{messcall}
 
             % Sender sends certified transaction to recipient
-            \begin{messcall}{S}{$(T, \sigma, \txhash, d, \pinc)$}{R}
+            \begin{messcall}{S}{$\mathcal{L} \cup (T, \sigma, \txhash, d, \pinc)$}{R}
+                \postlevel
                 \postlevel
                 \postlevel
                 \postlevel
                 \begin{call}{R}{\shortstack[l]{
-                    $T.\sthash \stackrel{?}{=} \sthash$ \\
+                    $T.\sthash \stackrel{?}{=} H(h^\textsf{prev}_\mathsf{st},x_\textsf{prev})$ \\
                     $\open(\txhash, d) \stackrel{?}{=} H(T.D)$ \\
-                    $\sigver(\pubkey, H(\sthash, \txhash), \sigma) \stackrel{?}{=} 1$ \\
-                    $\univer(H(\pubkey, T.\sthash), \txhash, \pinc) \stackrel{?}{=} 1$ \\
+                    $\systime \gets \exttime(\pinc)$ \\
+                    $\predi(\systime, H(\sthash, \txhash), \sigma) \stackrel{?}{=} 1$ \\
+                    $\univer(H(\predi, T.\sthash), \txhash, \pinc) \stackrel{?}{=} 1$ \\
                     Accept transaction if all checks pass
                     }}{R}{}
                 \end{call}
             \end{messcall}
         \end{sequencediagram}
-        \caption{Detailed Unicity transaction flow.}\label{fi:unicity-transaction-full}
+        \caption{One unicity transaction, where the predicate $\predi$ represents the current ownership, and the capability to unlock $\predi'$ defines the new owner. System time $\systime$ is extracted from the inclusion proof $\pinc$ and used in predicate evaluation by the future verifiers.}\label{fi:unicity-transaction-pred}
     \end{center}
 \end{figure}
 

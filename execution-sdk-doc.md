@@ -2,17 +2,31 @@
 
 ## Core Cryptographic Primitives
 
-### Hash Function and Digital Signatures
+### Hash Function
 
-Basic type definitions:
 ```typescript
 // Hash algorithm: SHA-256 ($H$ in the paper)
 type Hash = ...
-type PublicKey = ...
-type PrivateKey = ...
-type Signature = ...
 // Random blinding mask for state transitions ($x$ in paper)
 type BlindingMask = ...  // at least 128 bits of entropy
+```
+
+### Predicates and Witnesses
+
+```typescript
+/**
+ * Predicate: Programmable spending condition
+ * Corresponds to $\predi$ from the paper
+ * Function signature: predicate(systime, message, witness) → boolean
+ */
+type Predicate = ...
+
+/**
+ * Witness: Data proving predicate satisfaction
+ * Corresponds to $\sigma$ from the paper
+ * Replaces signatures in the generalized model
+ */
+type Witness = ...
 ```
 
 ## Token State and Ownership
@@ -21,21 +35,24 @@ type BlindingMask = ...  // at least 128 bits of entropy
 
 ```typescript
 /**
- * TokenState represents the ownership configuration of a token
- * Corresponds to the state $(pk, aux)$ from the paper
+ * TokenState represents the spending condition and state of a token
+ * Corresponds to $(\predi, \auxd, h_{st})$ from the paper
  */
 interface TokenState {
-  /** Current owner's public key ($pk$ in paper) */
-  ownerPublicKey: PublicKey;
+  /** Spending condition predicate ($\predi$ in paper) */
+  predicate: Predicate;
 
-  /** $h_{st}$ - rolling identifier of the token state being spent, at genesis
-   *  h_st_0 = h(id, MINT_SUFFIX), then h_st_{i+1} = h(x, h_st_i) */
+  /** Auxiliary data accessible to predicate ($\auxd$ in paper) */
+  auxiliaryData: bytes;
+
+  /** Rolling state identifier, at genesis h_st_0 = h(id, MINT_SUFFIX),
+   *  then h_st_{i+1} = h(x, h_st_i) */
   stateHash: Hash;
 }
 
 /**
  * State identifier uniquely identifies a token state
- * Corresponds to $H(pk, h_st)$ in the paper
+ * Corresponds to $H(\predi, h_{st})$ in the paper
  */
 type StateId = Hash;
 ```
@@ -47,18 +64,18 @@ type StateId = Hash;
 ```typescript
 /**
  * Transaction data structure for token transfers
- * Corresponds to $D = (pk', x, aux')$ from the paper
+ * Corresponds to $D = (\predi', \auxd', x)$ from the paper
  * Unified structure for both mint and transfer transactions
  */
 interface TransactionData {
-  /** Recipient's public key ($pk'$ in paper) */
-  recipientPublicKey: PublicKey;
+  /** Recipient's spending predicate ($\predi'$ in paper) */
+  recipientPredicate: Predicate;
+
+  /** Auxiliary data for the next token state ($\auxd'$ in paper) */
+  recipientAuxiliaryData: bytes;
 
   /** Random blinding mask for privacy and state evolution ($x$ in paper) */
   blindingMask: BlindingMask;  // NULL if mint transaction
-
-  /** Auxiliary data for the next token state ($aux'$ in paper) */
-  recipientAuxiliaryData: string; // hex-encoded bytes
 
   // Additional fields for mint transactions (zero/empty for transfers)
   mintTransactionData: MintTransactionData?;
@@ -83,8 +100,8 @@ type CoinId = Uint8Array;  // 32 bytes
 
 /**
  * Transaction data hash calculation
- * In the paper: $h_tx = \commitc(H(D))$
- * With unity commitment: $h_tx = H(D)$
+ * In the paper: $h_{tx} = \commitc(H(D))$
+ * With unity commitment: $h_{tx} = H(D)$
  */
 function calculateTransactionHash(d: TransactionData): Hash {
   return sha256(encodeTransactionData(d));
@@ -96,13 +113,13 @@ function calculateTransactionHash(d: TransactionData): Hash {
 ```typescript
 /**
  * Complete transaction structure
- * Corresponds to $T = (h_st, D)$ from the paper
+ * Corresponds to $T = (h_{st}, D)$ from the paper
  */
 interface Transaction {
-  /** Current state hash before executing transaction ($h_st$ in paper) */
+  /** Current state hash before executing transaction ($h_{st}$ in paper) */
   currentStateHash: Hash;
 
-  /** Transaction data containing recipient and other details */
+  /** Transaction data containing recipient predicate and other details */
   transactionData: TransactionData;
 }
 ```
@@ -114,17 +131,16 @@ interface Transaction {
 ```typescript
 /**
  * Certified transaction with Unicity Service proofs
- * Corresponds to $(T, \sigma, h_tx, d, \pi)$ from the paper
- * With unity commitment, $d$ is omitted
+ * Corresponds to $(T, \sigma, h_{tx}, \pi)$ from the paper
  */
 interface CertifiedTransaction {
   /** The transaction being certified ($T$) */
   transaction: Transaction;
 
-  /** Digital signature by current owner ($\sigma$ in paper) on transaction */
-  signature: Signature;
+  /** Witness satisfying current predicate ($\sigma$ in paper) */
+  witness: Witness;
 
-  /** Transaction data hash ($h_tx$ in paper) */
+  /** Transaction data hash ($h_{tx}$ in paper) */
   transactionHash: Hash;
 
   /** Inclusion proof from Unicity Service ($\pi$ in paper) */
@@ -136,8 +152,8 @@ interface CertifiedTransaction {
  * Proves that a state transition was registered
  */
 interface InclusionProof {
-  /** Cryptographic proof data (opaque $\pi_inc$ in paper) */
-  /** Documented elsewhere */
+  /** Cryptographic proof data ($\pi$ in paper) */
+  /** Versioned. Documented elsewhere */
 }
 ```
 
@@ -148,20 +164,20 @@ interface InclusionProof {
 ```typescript
 /**
  * Request to Unicity Service for state transition certification
- * Corresponds to $Q = (pk, h_st, h_tx, \sigma)$ from the paper
+ * Corresponds to $Q = (\predi, h_{st}, h_{tx}, \sigma)$ from the paper
  */
 interface UnicityServiceRequest {
-  /** Current owner's public key ($pk$ in paper) */
-  ownerPublicKey: PublicKey;
+  /** Current spending predicate ($\predi$ in paper) */
+  predicate: Predicate;
 
-  /** Current state hash ($h_st$ in paper) */
+  /** Current state hash ($h_{st}$ in paper) */
   currentStateHash: Hash;
 
-  /** Transaction data hash ($h_tx$ in paper) */
+  /** Transaction data hash ($h_{tx}$ in paper) */
   transactionHash: Hash;
 
-  /** Owner's signature authorizing the transition ($\sigma$ in paper) */
-  signature: Signature;
+  /** Witness satisfying the predicate ($\sigma$ in paper) */
+  witness: Witness;
 }
 
 /**
@@ -171,7 +187,7 @@ interface UnicityServiceResponse {
   /** Whether the request was accepted */
   success: boolean;
 
-  /** Inclusion proof if successful ($\pi_inc$ in paper) */
+  /** Inclusion proof if successful ($\pi$ in paper) */
   inclusionProof?: InclusionProof;
 
   /** Error message if failed */
@@ -185,29 +201,34 @@ interface UnicityServiceResponse {
 /**
  * Abstract interface for Unicity Service interaction
  * Modeled as key-value store $R$ in the paper where:
- * - Keys are $H(pk, h_st)$ (StateId)
- * - Values are $h_tx$ (transaction hashes)
+ * - Keys are $H(\predi, h_{st})$ (StateId)
+ * - Values are $h_{tx}$ (transaction hashes)
  */
 interface UnicityService {
   /**
    * Submit a state transition request
    * Service checks:
-   * 1. $R[H(pk, h_st)] = \bot$ (not already spent)
-   * 2. $\sigver(pk, H(h_st, h_tx), \sigma) = 1$ (valid signature)
-   * If both pass: $R[H(pk, h_st)] <- h_tx$
+   * 1. $R[H(\predi, h_{st})] = \bot$ (not already spent)
+   * 2. $\predi(\systime, H(h_{st}, h_{tx}), \sigma) = 1$ (predicate satisfied)
+   * If both pass: $R[H(\predi, h_{st})] \gets h_{tx}$
    */
   submitRequest(request: UnicityServiceRequest): Promise<UnicityServiceResponse>;
 
   /**
-   * Verify inclusion proof
+   * Verify inclusion proof (self-contained, does not access the service)
    * Corresponds to $\univer(k, v, \pi)$ from the paper
-   * A standalone function to verify self-contained proof in reality
    */
   verifyInclusionProof(
     stateId: StateId,
     transactionHash: Hash,
     proof: InclusionProof
   ): Promise<boolean>;
+
+  /**
+   * Extract system time from proof (self-contained, does not access the service)
+   * Corresponds to $\exttime(\pi)$ from the paper
+   */
+  extractTime(proof: InclusionProof): number;
 }
 ```
 
@@ -241,36 +262,52 @@ interface Token {
 ```typescript
 /**
  * Verify a certified transaction in a given state
- * Corresponds to $\certver(T, \sigma, h_tx, d, \pi; pk, h)$ from paper
- * Returns 1 if valid, 0 otherwise
+ * Corresponds to $\certver(T, \sigma, h_{tx}, \pi; \predi, \auxd, h_{st})$ from paper
+ * Returns true if valid, false otherwise
  */
-function verifyCertifiedTransaction(
+async function verifyCertifiedTransaction(
   certifiedTx: CertifiedTransaction,
   expectedState: TokenState,
   unicityService: UnicityService
 ): Promise<boolean> {
-  const { transaction, signature, transactionHash, inclusionProof } = certifiedTx;
+  const { transaction, witness, transactionHash, inclusionProof } = certifiedTx;
 
-  // Check 1: T.sthash = h (current state hash matches)
+  // Check 1: T.h_st = h_st (current state hash matches)
   if (transaction.currentStateHash !== expectedState.stateHash) {
     return false;
   }
 
-  // Check 2: txhash = H(T.D) (transaction hash is correct)
-  const calculatedHash = calculateTransactionHash(transaction.data);
+  // Check 2: h_tx = H(T.D) (transaction hash is correct)
+  const calculatedHash = calculateTransactionHash(transaction.transactionData);
   if (transactionHash !== calculatedHash) {
     return false;
   }
 
-  // Check 3: sigver(pubkey, H(sthash, txhash), signature) = 1
-  const signatureMessage = sha256(transaction.currentStateHash + transactionHash);
-  if (!verifySignature(expectedState.ownerPublicKey, signatureMessage, signature)) {
+  // Check 3: predicate(systime, H(h_st, h_tx), witness) = 1
+  const systime = unicityService.extractTime(inclusionProof);
+  const message = sha256(transaction.currentStateHash + transactionHash);
+  if (!evaluatePredicate(expectedState.predicate, systime, message, witness, expectedState.auxiliaryData)) {
     return false;
   }
 
-  // Check 4: univer(H(pubkey, T.sthash), txhash, pi) = 1
-  const stateId = calculateStateId(expectedState.ownerPublicKey, transaction.currentStateHash);
+  // Check 4: univer(H(predicate, h_st), h_tx, pi) = 1
+  const stateId = calculateStateId(expectedState.predicate, transaction.currentStateHash);
   return await unicityService.verifyInclusionProof(stateId, transactionHash, inclusionProof);
+}
+
+/**
+ * Evaluate predicate with given parameters
+ * Implementation depends on predicate type
+ */
+function evaluatePredicate(
+  predicate: Predicate,
+  systime: number,
+  message: Hash,
+  witness: Witness,
+  auxiliaryData: bytes
+): boolean {
+  // Implementation-specific: dispatch to appropriate predicate evaluator
+  throw new Error("Not implemented - implement predicate evaluation");
 }
 ```
 
@@ -279,110 +316,101 @@ function verifyCertifiedTransaction(
 ```typescript
 /**
  * Verify a token with full transaction history
- * Corresponds to token ledger verification from the paper
  * Validates:
  * 1. Genesis/mint transaction
  * 2. All transactions in history
  * 3. Cryptographic links between transactions (state hash evolution)
  * 4. Current state consistency
- * Returns true if valid, false otherwise
  */
 async function verifyToken(
   token: Token,
   unicityService: UnicityService
 ): Promise<boolean> {
   // Verify genesis/mint transaction
-  if (!await verifyMintTransaction(token.genesis)) {
+  if (!await verifyMintTransaction(token.genesis, unicityService)) {
     return false;
   }
 
   // Extract initial state from genesis transaction
   let currentStateHash = token.genesis.transaction.currentStateHash;
-  let currentOwnerKey = token.genesis.transaction.transactionData.recipientPublicKey;
-  let currentAux = token.genesis.transaction.transactionData.recipientAuxiliaryData;
+  let currentPredicate = token.genesis.transaction.transactionData.recipientPredicate;
+  let currentAuxData = token.genesis.transaction.transactionData.recipientAuxiliaryData;
 
   // Verify each transaction in the history sequentially
-  for (let i = 0; i < token.transactionHistory.length; i++) {
-    const certifiedTx = token.transactionHistory[i];
+  for (const certifiedTx of token.transactionHistory) {
     const expectedState: TokenState = {
-      ownerPublicKey: currentOwnerKey,
-      auxiliaryData: currentAux,
+      predicate: currentPredicate,
+      auxiliaryData: currentAuxData,
       stateHash: currentStateHash
     };
 
-    // Verify the certified transaction in the current state
     if (!await verifyCertifiedTransaction(certifiedTx, expectedState, unicityService)) {
       return false;
     }
 
     // Compute next state hash: h' = H(h, x)
-    // where x is the blinding mask from the transaction data
     const blindingMask = certifiedTx.transaction.transactionData.blindingMask;
-    const nextStateHash = sha256(currentStateHash + blindingMask);
-
-    // Update state for next iteration
-    currentStateHash = nextStateHash;
-    currentOwnerKey = certifiedTx.transaction.transactionData.recipientPublicKey;
-    currentAux = certifiedTx.transaction.transactionData.recipientAuxiliaryData;
+    currentStateHash = sha256(currentStateHash + blindingMask);
+    currentPredicate = certifiedTx.transaction.transactionData.recipientPredicate;
+    currentAuxData = certifiedTx.transaction.transactionData.recipientAuxiliaryData;
   }
 
   // Verify that final computed state matches token's current state
   if (currentStateHash !== token.currentState.stateHash ||
-      currentOwnerKey !== token.currentState.ownerPublicKey ||
-      currentAux !== token.currentState.auxiliaryData) {
+      currentPredicate !== token.currentState.predicate ||
+      currentAuxData !== token.currentState.auxiliaryData) {
     return false;
   }
 
   return true;
 }
+```
 
+### Mint Transaction Verification
+
+```typescript
 /**
  * Verify a mint transaction (genesis transaction for a token)
- * Corresponds to mint transaction verification from the paper
- * Note that actual verification steps depend on token type
+ * Uses system mint predicate
  */
 async function verifyMintTransaction(
   certifiedTx: CertifiedTransaction,
   unicityService: UnicityService
 ): Promise<boolean> {
-  const { transaction, signature, transactionHash, inclusionProof } = certifiedTx;
+  const { transaction, witness, transactionHash, inclusionProof } = certifiedTx;
   const mintData = transaction.transactionData.mintTransactionData;
 
-  // Mint transaction must have mint data
   if (!mintData) {
     return false;
   }
 
   // Check 1: Verify state hash is derived from token ID
-  // For mint: sthash = H(tokenId, MINT_SUFFIX)
   const expectedStateHash = sha256(mintData.tokenId + "MINT_SUFFIX");
   if (transaction.currentStateHash !== expectedStateHash) {
     return false;
   }
 
   // Check 2: Verify transaction hash = H(D_mint)
-  // For mint transactions, no commitment opening needed (unity commitment)
   const calculatedHash = calculateTransactionHash(transaction.transactionData);
   if (transactionHash !== calculatedHash) {
     return false;
   }
 
-  // Check 3: Verify signature by mint authority
-  // Mint transactions are signed by a fixed, public keypair (pubkey_mint, prikey_mint)
-  const MINT_PUBLIC_KEY = getMintAuthorityPublicKey();
-  const signatureMessage = sha256(transaction.currentStateHash + transactionHash);
-  if (!verifySignature(MINT_PUBLIC_KEY, signatureMessage, signature)) {
+  // Check 3: Verify mint predicate satisfaction
+  const MINT_PREDICATE = getMintPredicate();
+  const systime = unicityService.extractTime(inclusionProof);
+  const message = sha256(transaction.currentStateHash + transactionHash);
+  if (!evaluatePredicate(MINT_PREDICATE, systime, message, witness, null)) {
     return false;
   }
 
-  // Check 4: Verify inclusion proof with mint authority as owner
-  const stateId = calculateStateId(MINT_PUBLIC_KEY, transaction.currentStateHash);
+  // Check 4: Verify inclusion proof with mint predicate
+  const stateId = calculateStateId(MINT_PREDICATE, transaction.currentStateHash);
   if (!await unicityService.verifyInclusionProof(stateId, transactionHash, inclusionProof)) {
     return false;
   }
 
-  // Application-specific checks (e.g., validate mint justification)
-  // These are implemented based on the specific token type and application requirements
+  // Application-specific mint validation
   if (!validateMintJustification(mintData)) {
     return false;
   }
@@ -391,130 +419,89 @@ async function verifyMintTransaction(
 }
 
 /**
- * Calculate state identifier from public key and state hash
- * Corresponds to H(pk, h_st) in the paper
+ * Calculate state identifier from predicate and state hash
+ * Corresponds to H(predicate, h_st) in the paper
  */
-function calculateStateId(publicKey: PublicKey, stateHash: Hash): StateId {
-  return sha256(publicKey + stateHash);
+function calculateStateId(predicate: Predicate, stateHash: Hash): StateId {
+  return sha256(encodePredicate(predicate) + stateHash);
 }
 
 /**
- * Get the fixed public key of the mint authority
- * This is a system-wide constant
+ * Get the system mint predicate
+ * This is a well-known constant
  */
-function getMintAuthorityPublicKey(): PublicKey {
-  // Implementation returns the fixed mint authority public key
-  // This is a well-known constant in the system
-  throw new Error("Not implemented - return system mint authority public key");
+function getMintPredicate(): Predicate {
+  throw new Error("Not implemented - return system mint predicate");
 }
 
 /**
  * Validate mint justification (application-specific)
- * This function should be implemented based on the token type and application
  */
 function validateMintJustification(mintData: MintTransactionData): boolean {
-  // Application-specific validation logic
-  // For example:
+  // Application-specific validation:
   // - Verify bridged asset burn/lock proof
   // - Check authorization for minting
   // - Validate token data format
   throw new Error("Not implemented - implement application-specific mint validation");
 }
+
+/**
+ * Encode predicate to bytes for hashing
+ * Implementation-specific serialization
+ */
+function encodePredicate(predicate: Predicate): bytes {
+  throw new Error("Not implemented - implement predicate serialization");
+}
 ```
 
-## Protocol Flow Diagrams
+## Protocol Flow
 
 ### Token Transfer Flow
 
-```mermaid
-sequenceDiagram
-    participant Alice as Alice (Sender)
-    participant Bob as Bob (Recipient)
-    participant US as Unicity Service
+See the execution layer paper, Appendix A.
 
-    Note over Bob: Generate recipient key
-    Bob->>Bob: (pk', sk') ← KeyGen
-    Bob->>Alice: pk' (recipient public key)
-
-    Note over Alice: Create transaction
-    Alice->>Alice: x ← {0,1}^ℓ (random blinding mask)
-    Alice->>Alice: D = (pk', x, aux')
-    Alice->>Alice: T = (sthash, D)
-    Alice->>Alice: txhash = H(D)
-    Alice->>Alice: σ ← Sign(sk, H(sthash, txhash))
-
-    Note over Alice: Submit to Unicity Service
-    Alice->>US: Q = (pk, sthash, txhash, σ)
-    US->>US: Verify signature and uniqueness
-    US->>US: R[H(pk, sthash)] ← txhash
-    US->>Alice: π (inclusion proof)
-
-    Note over Alice: Send certified transaction
-    Alice->>Bob: (T, σ, txhash, π)
-
-    Note over Bob: Verify and update state
-    Bob->>Bob: Verify certified transaction
-    Bob->>Bob: sthash' = H(sthash, x)
-    Bob->>Bob: Update token state
-```
 
 ## Related Concepts
 
-Let's keep it modular. These are related components, there should be plug-in interface.
-
 ### Token Payload
 
-Token Payload - let's copy the minimum of legacy SDK (except multiple fungible assets in one token). See `MintTransactionData` above.
+See `MintTransactionData` above for token payload structure.
 
 ### Token Split
 
-Just like the legacy SDK. In order to burn input token, we send it to public key `0`. This corresponds to trivially insecure private key; likely libraries will not accept it -- an extra safety net.
+To burn input token, send it to an _always false_ predicate.
 
 ### Bridging PoW Alpha
 
-Document the justification content. For PoW it will be
-
+Mint justification for PoW bridging:
 - Block number of burn / last tx
 - Hash chain from burn / last tx to block header
 
-It is assumed that verifier runs their own full PoW blockchain node.
+Verifier runs their own full PoW blockchain node.
 
 ### Bridging External Assets
 
-Depends on the source blockchain. E.g., at Solana case it makes sense to check TX status directly using an RPC call.
+Depends on source blockchain. E.g., Solana: check TX status directly using RPC call.
 
 ### Address Format
 
-Initially just public key in base58 (or whatever Bitcoin is using) in ux; pubkey serialization elsewhere.
-
-Alternatively: P2PKH - allows shorter and truncated addresses, and that public key is released only moments before sending the transaction, reducing the exposure window (threat model is aliens with quantum computers).
-
-### Aggregation (Implementation)
-
-Another version of the service, versioning based on endpoint. As tokens are not allowed to be converted to new format the service can start from blank state. See chapter below for details.
-
-### Serialization, Token Format
-
-Suggestion: let's have a prototype ready: with efficient data structures and serialization format, supporting minimal data copying and memory allocations, based on developers' best judgement, and then document it and adjust if necessary so that token-compatible SDK-s can be produced based on spec alone.
-
-### Programmable Spending Conditions (Predicates)
-
-Universal, programmable predicates is a longer term goal. Right now focus on simplicity.
+Options:
+- Predicate hash in base58
+- P2PKH-style: hash of predicate for shorter addresses
 
 ### Naming System (Name Tags)
 
-Use case 1: there is a 3rd party certifying name-pubkey pairs. Needs a revocation system and a lookup service.
+Use case 1: there is a 3rd party certifying name-pubkey(predicate) pairs. Needs a revocation system and a lookup service.
 
 Use case 2: whoever is 1st to grab a name owns it. Needs sybil, name hoarding protection, e.g. economic.
 
+
 ### Versioning
 
-Version number at highest level of token container structure. No versioning inside. Unicity service is versioned using endpoint uri; different versions' state do not overlap.
-
+Version number at highest level of token container structure. Different versions' state do not overlap.
+Unicity service versioned using endpoint URI; also version in Unicity Certificate
 
 ## Aggregation Service
-
-This section describes the Unicity Service, also known as the Aggregation Layer at the infrastructure level.
 
 ### Versioning
 
@@ -523,11 +510,11 @@ Different protocol versions use separate endpoint URIs and maintain independent 
 ### Data
 
 The Unicity Service maintains a key-value store `R` where:
-- **Keys** are state identifiers: `StateId = H(publicKey, stateHash)`
-- **Values** are transaction data hashes: `transactionHash`
+- **Keys** are state identifiers: `StateId = H(predicate, stateHash)`
+- **Values** are transaction data hashes: `transactionHash`; the atomic broadcast protocol needs to store witness as well
 
-The service processes certification requests `Q = (publicKey, stateHash, transactionHash, signature)` by:
-1. Verifying the digital signature
+The service processes certification requests `Q = (predicate, stateHash, transactionHash, witness)` by:
+1. Evaluating the predicate: `predicate(systime, H(stateHash, transactionHash), witness)`
 2. Checking that the state hasn't been spent before (uniqueness)
-3. Recording the mapping if valid: `R[H(publicKey, stateHash)] ← transactionHash`
-4. Returning an inclusion proof `π` of the registered state transition (after round completion)
+3. Recording the mapping if valid: `R[H(predicate, stateHash)] ← transactionHash`
+4. Returning an inclusion proof `π` of the registered state transition (after round completion). SMT hash chain and a certificate from BFT Core.
