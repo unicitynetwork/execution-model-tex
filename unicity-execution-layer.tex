@@ -84,10 +84,7 @@ The contributions of this paper include: (1) a formal security model for off-cha
 \paragraph{Paper Structure}
 After introduction, Sections~\ref{sec:infrastructure}--\ref{sec:privacy} present the core Unicity infrastructure with signature-based token ownership ($\sigver(\pubkey, m, \sigma) = 1$), proving three core security properties: no double-spending, no blocking, and service-side privacy (transaction unlinkability).
 
-The paper then presents two extensions. Section \ref{sec:wallet-privacy} addresses user-side privacy through multi-public-key (MPK) signature schemes: a theoretical framework where one secret generates multiple unlinkable public keys, followed by concrete instantiation for ECDSA, and a protocol enabling efficient private transactions with persistent public identity.
-
-Section \ref{sec:predicates} generalizes ownership to arbitrary predicates $\predi(\tau, m, \sigma)$ encoding programmable spending conditions---enabling smart-contract like functionality executed off-chain directly by relying parties. Since user-chosen predicates may be weak or unsatisfiable, the no-blocking property requires reformulation. We prove all three security properties are preserved under reduction to predicate family unforgeability.
-
+Section \ref{sec:wallet-privacy} addresses user-side privacy through multi-public-key (MPK) signature schemes: a theoretical framework where one secret generates multiple unlinkable public keys, followed by concrete instantiation for ECDSA, and a protocol enabling efficient private transactions with persistent public identity.
 
 \section{System Overview}\label{sec:overview}
 
@@ -143,7 +140,7 @@ The three layers serve distinct functions:
 
 \item \textbf{Aggregation Layer} implements the Unicity Service, maintaining a global append-only registry of spent token states. It provides inclusion and non-inclusion proofs, processes state certification requests, and with these services allows Execution Layer to avoid the risk of double-spending. The layer is sharded for scalability, clustered for high availability, and uses cryptographic consistency proofs to maintain trustless operation.
 
-\item \textbf{Execution Layer} handles transaction processing, smart contract execution (implemented through orchestrated execution of programmable stateful spending conditions, called \emph{predicates} in Section~\ref{sec:predicates}), and business logic. This layer operates off-chain and is managed by users and agents who are interested parties in transaction validation and ordering.
+\item \textbf{Execution Layer} handles transaction processing, smart contract execution (implemented through orchestrated execution of programmable stateful spending conditions, called \emph{predicates}, discussed in a follow-up paper; and business logic. This layer operates off-chain and is managed by users and agents who are interested parties in transaction validation and ordering.
 \end{itemize}
 
 \subsection{Unicity Service Protocol}
@@ -998,9 +995,8 @@ At the same time, there seem to be no obvious ways of proving that such a simpli
 
 Still, it may be a plausible practical assumption that given $\sthash$ and the next state hash $\sthash'=H(\sthash,x)$ and $\txhash = H(\pubkey',x,\auxd')$ it is infeasible to find $x'$ so that $H(\sthash,x')=\sthash'$. At least for example, if $H$ is \textsf{SHA-256}, there seem to be no obvious ways how to do it if $x$ has sufficiently many random bits.
 
-\include{unicity-private-wallet}
 
-\include{unicity-predicates}
+\include{unicity-private-wallet}
 
 
 \begin{thebibliography}{99}
@@ -1018,8 +1014,8 @@ Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature alg
 
 \pagebreak
 \appendix
+\section{Detailed Transaction Sequence Diagram}
 
-\section{Sequence Diagram with Predicates}
 \begin{figure}[!h]
     \begin{center}
         \begin{sequencediagram}
@@ -1027,12 +1023,12 @@ Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature alg
             \newinst[3]{R}{Recipient}
             \newinst[2]{US}{Unicity Service}
 
-            % Recipient prepares predicate and auxiliary data
-            \begin{call}{R}{Prepare $\predi'$, $\auxd'$}{R}{}
+            % Recipient generates keys and parameters
+            \begin{call}{R}{$(\pubkey', \prikey') \gets \keygen$}{R}{}
             \end{call}
 
-            % Recipient sends predicate to sender
-            \begin{messcall}{R}{$\predi'$, $\auxd'$}{S}
+            % Recipient sends public key to sender
+            \begin{messcall}{R}{$\pubkey'$}{S}
             \end{messcall}
 
             % Sender creates transaction data
@@ -1041,27 +1037,27 @@ Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature alg
             \postlevel
             \begin{call}{S}{\shortstack[l]{
                     $x \gets \{0,1\}^\ell$     \\
-                    $D = (\predi', x, \auxd')$ \\
+                    $D = (\pubkey', x, \auxd')$ \\
                     $T = (\sthash, D)$         \\
                     $(\txhash, d) \gets \commit(H(D))$ \\
                     $h_T = H(\sthash, \txhash)$ \\
-                    $\sigma$ such that $\predi(\systime_\mathsf{exp}, h_T, \sigma) = 1$
+                    $\sigma \gets \sig(\prikey, h_T)$
                 }
                 }{S}{}
             \end{call}
 
             % Sender requests certification from Unicity Service
-            \begin{messcall}{S}{$Q = (\predi, \sthash, \txhash, \sigma)$}{US}
+            \begin{messcall}{S}{$Q = (\pubkey, \sthash, \txhash, \sigma)$}{US}
                 \postlevel
                 \begin{call}{US}{\shortstack[l]{
-                    $\predi(\systime, h_T, \sigma) \stackrel{?}{=} 1$ \\
-                    $R[H(\predi, \sthash)] \stackrel{?}{=} \bot$ \\
-                    $R[H(\predi, \sthash)] \gets \txhash$
+                    $\sigver(\pubkey, h_T, \sigma) \stackrel{?}{=} 1$ \\
+                    $R[H(\pubkey, \sthash)] \stackrel{?}{=} \bot$ \\
+                    $R[H(\pubkey, \sthash)] \gets \txhash$
                     }}{US}{}
                 \end{call}
             \end{messcall}
             \prelevel
-            \begin{messcall}{US}{$\pinc$ (with $\systime$)}{S}
+            \begin{messcall}{US}{$\pinc$}{S}
             \end{messcall}
 
             % Sender sends certified transaction to recipient
@@ -1069,20 +1065,19 @@ Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature alg
                 \postlevel
                 \postlevel
                 \postlevel
-                \postlevel
                 \begin{call}{R}{\shortstack[l]{
                     $T.\sthash \stackrel{?}{=} H(h^\textsf{prev}_\mathsf{st},x_\textsf{prev})$ \\
                     $\open(\txhash, d) \stackrel{?}{=} H(T.D)$ \\
-                    $\systime \gets \exttime(\pinc)$ \\
-                    $\predi(\systime, H(\sthash, \txhash), \sigma) \stackrel{?}{=} 1$ \\
-                    $\univer(H(\predi, T.\sthash), \txhash, \pinc) \stackrel{?}{=} 1$ \\
+                    $\sigver(\pubkey, H(\sthash, \txhash), \sigma) \stackrel{?}{=} 1$ \\
+                    $\univer(H(\pubkey, T.\sthash), \txhash, \pinc) \stackrel{?}{=} 1$ \\
                     Accept transaction if all checks pass
                     }}{R}{}
                 \end{call}
             \end{messcall}
         \end{sequencediagram}
-        \caption{One unicity transaction, where the predicate $\predi$ represents the current ownership, and the capability to unlock $\predi'$ defines the new owner. System time $\systime$ is extracted from the inclusion proof $\pinc$ and used in predicate evaluation by the future verifiers.}\label{fi:unicity-transaction-pred}
+        \caption{Detailed Unicity transaction flow.}\label{fi:unicity-transaction-full}
     \end{center}
 \end{figure}
 
 \end{document}
+
