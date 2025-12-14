@@ -1143,7 +1143,7 @@ Option (1) requires inverting $H(\pubkey', \cdot)$, contradicting the one-waynes
 The masked protocol requires $B$ to reliably store the mask $y$ along with the private key $\prikey'$ and state hash $\sthash'$ until making the next transaction. Loss of $y$ renders the token unspendable, as $B$ cannot prove that $\sthash' = H(\sthash, y)$ is the legitimate next state derived from the previous owner's certified transaction.
 
 
-\subsection{Solution 3: Non-Interactive Masked Protocol}
+\subsection{Solution 3: Non-Interactive Masked Protocol}\label{sec:non-interactive-masked-protocol}
 
 The interactive masked protocol requires the recipient to generate and communicate $\mpubkey' = H(\pubkey', y)$ before the sender can construct the transaction. We now present a non-interactive variant that eliminates this communication round while preserving all security properties.
 
@@ -1268,12 +1268,134 @@ Without $\sigma_{\mathsf{bind}}$, the service cannot compute $y$ or verify any r
 
 \paragraph{Implementation Considerations}
 
-This protocol requires the signature scheme to be deterministic, meaning $\sig(\prikey, m)$ produces the same output for fixed $(\prikey, m)$. Standard choices include:
+This protocol requires the mask derivation signature scheme to be deterministic, meaning $\sig(\prikey, m)$ produces the same output for fixed $(\prikey, m)$. Standard choices include:
 \begin{itemize}
 \item ECDSA with RFC 6979 deterministic $k$ generation
 \item EdDSA (inherently deterministic)
 \item Schnorr signatures with deterministic nonce derivation (BIP-340)
 \end{itemize}
+
+
+\subsection{Combined Protocol with Unlinkable Keys}
+
+We now present the complete protocol combining \emph{unlinkable transaction keys} and \emph{persistent recipient identities} (Section~\ref{sec:non-interactive-protocol}) with the binding signature mechanism (Section~\ref{sec:non-interactive-masked-protocol}) for verifiable mask derivation.
+
+\subsubsection{Key Derivation}
+
+For a recipient with persistent keypair $(d, P = [d]G)$ and sender-chosen ephemeral value $r \in \mathbb{Z}_q$:
+
+\begin{enumerate}
+\item Sender computes ephemeral point: $R \gets [r]G$
+\item Sender computes shared secret: $S \gets [r]P$
+\item Blinding factor: $s \gets H_{\mathsf{key}}(S, R, \sthash)$
+\item Transaction public key: $P_{\mathsf{tx}} \gets P + [s]G$
+\item Recipient computes same shared secret: $S = [d]R$
+\item Recipient derives private key: $d_{\mathsf{tx}} \gets d + s \mod q$
+\end{enumerate}
+
+Note that $[d_{\mathsf{tx}}]G = [d + s]G = [d]G + [s]G = P + [s]G = P_{\mathsf{tx}}$, so the derived keys are consistent.
+
+\subsubsection{Transaction Protocol}
+
+\paragraph{Transaction $A \to B$}
+
+Party $A$ holds a token in state $(P_A, \sthash)$  (note the ECDSA specific notation, instead of $\pubkey_A$ we write $P_A$) and transfers to party $B$ with persistent public key $P_B$.
+
+\begin{enumerate}
+\item \textbf{Key derivation}:
+\begin{itemize}
+\item $A$ samples $r \gets \mathbb{Z}_q$ and computes $R \gets [r]G$
+\item $A$ computes shared secret $S \gets [r]P_B$
+\item $A$ computes blinding factor $s \gets H_{\mathsf{key}}(S, R, \sthash)$
+\item $A$ computes transaction key $P_{\mathsf{tx}} \gets P_B + [s]G$
+\end{itemize}
+
+\item \textbf{Transaction data}: $D = (P_{\mathsf{tx}}, R, \auxd')$
+
+\item \textbf{Commitment}: $(\txhash, d) \gets \commit(H(D))$
+
+\item \textbf{Signature}: $\sigma \gets \sig(d_A, H(\sthash, \txhash))$
+
+\item \textbf{Certification}: $Q = (P_A, \sthash, \txhash, \sigma)$, obtain $\pinc \gets \unisrv(Q)$
+
+\item \textbf{Send to $B$}: $(T, \sigma, \txhash, d, \pinc)$ where $T = (\sthash, D)$
+\end{enumerate}
+
+\paragraph{$B$ Processes Incoming Transaction}
+
+\begin{enumerate}
+\item \textbf{Validate ephemeral point}: Verify $R \neq \mathcal{O}$ (point at infinity)
+
+\item \textbf{Derive keys}:
+\begin{itemize}
+\item Compute shared secret $S \gets [d_B]R$
+\item Compute blinding factor $s \gets H_{\mathsf{key}}(S, R, \sthash)$
+\item Verify $P_B + [s]G = P_{\mathsf{tx}}$ (from transaction data)
+\item Compute transaction private key $d_{\mathsf{tx}} \gets d_B + s \mod q$
+\end{itemize}
+
+\item \textbf{Binding signature}: $\sigma_{\mathsf{bind}} \gets \sig(d_{\mathsf{tx}}, \sthash)$
+
+\item \textbf{Mask derivation}: $y \gets H(\sigma_{\mathsf{bind}})$
+
+\item \textbf{Next state}: $\sthash' \gets H(\sthash, y)$
+
+\item \textbf{Store}: $(d_{\mathsf{tx}}, \sthash', \sigma_{\mathsf{bind}})$ for spending
+\end{enumerate}
+
+\paragraph{Transaction $B \to C$}
+
+Party $B$ spends the token to party $C$ with persistent public key $P_C$.
+
+\begin{enumerate}
+\item \textbf{Key derivation for $C$}:
+\begin{itemize}
+\item $B$ samples $r' \gets \mathbb{Z}_q$ and computes $R' \gets [r']G$
+\item $B$ computes $S' \gets [r']P_C$
+\item $B$ computes $s' \gets H_{\mathsf{key}}(S', R', \sthash')$
+\item $B$ computes $P'_{\mathsf{tx}} \gets P_C + [s']G$
+\end{itemize}
+
+\item \textbf{Transaction data}: $D' = (P'_{\mathsf{tx}}, R', \auxd'')$
+
+\item \textbf{Commitment}: $(\txhash', d') \gets \commit(H(D'))$
+
+\item \textbf{Signature}: $\sigma' \gets \sig(d_{\mathsf{tx}}, H(\sthash', \txhash'))$
+
+\item \textbf{Certification}: $Q' = (P_{\mathsf{tx}}, \sthash', \txhash', \sigma')$, obtain $\pinc' \gets \unisrv(Q')$
+
+\item \textbf{Send to $C$}: $(T', \sigma', \txhash', d', \pinc'; \sigma_{\mathsf{bind}})$ along with ledger $\mathcal{L}$
+\end{enumerate}
+
+\subsubsection{Transaction Verification}
+
+Given the certified transaction, binding signature $\sigma_{\mathsf{bind}}$, and ledger $\mathcal{L}$:
+
+\begin{enumerate}
+\item \textbf{Verify binding signature}:
+\[
+\sigver(P_{\mathsf{tx}}, \sthash_{\mathsf{prev}}, \sigma_{\mathsf{bind}}) \stackrel{?}{=} 1
+\]
+where $P_{\mathsf{tx}}$ is the transaction public key from the previous transaction's data.
+
+\item \textbf{Compute mask}:
+\[
+y \gets H(\sigma_{\mathsf{bind}})
+\]
+
+\item \textbf{Verify state hash derivation}:
+\[
+\sthash' \stackrel{?}{=} H(\sthash_{\mathsf{prev}}, y)
+\]
+
+\item \textbf{Verify certified transaction}:
+\[
+\certver(T', \sigma', \txhash', d', \pinc'; P_{\mathsf{tx}}, \sthash') \stackrel{?}{=} 1
+\]
+
+\item \textbf{Verify ledger}: Recursively verify all previous transactions in $\mathcal{L}$
+\end{enumerate}
+
 
 \include{unicity-private-wallet}
 

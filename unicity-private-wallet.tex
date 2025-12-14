@@ -300,7 +300,7 @@ $\mathsf{tx} \gets \{P_{tx}, R, \ldots\}$  & &  \\
 
 The recipient maintains only the persistent secret $d$ and derives ephemeral signing keys deterministically from data field $R$, included with the transaction. When spending the token, the recipient reconstructs the blinding factor $r' = H(d \,||\, R)$ and derives the private key $d' = d + r' \bmod n$ corresponding to $P'$.
 
-\subsubsection{Non-Interactive Protocol}
+\subsubsection{Non-Interactive Protocol}\label{sec:non-interactive-protocol}
 
 For applications requiring persistent public keys as ``addresses'', or non-interactive operation, the parties can create the blinded public key using Diffie-Hellman key exchange. The recipient publishes a persistent public key $P = d \cdot G$. The protocol is shown in Figure~\ref{fig:protocol3}.
 
