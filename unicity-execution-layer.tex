@@ -1147,23 +1147,18 @@ The masked protocol requires $B$ to reliably store the mask $y$ along with the p
 
 The interactive masked protocol requires the recipient to generate and communicate $\mpubkey' = H(\pubkey', y)$ before the sender can construct the transaction. We now present a non-interactive variant that eliminates this communication round while preserving all security properties.
 
-\subsubsection{Mask Derivation via Binding Signature}
+\subsubsection{Mask Derivation via Verifiable Random Function}
 
-We observe that deterministic signature schemes (e.g., EdDSA) produce a unique signature for any given message and private key. This property enables verifiable, deterministic mask derivation without revealing the private key.
+We observe that a Verifiable Random Function (VRF) allows the holder of a private key to produce a unique, verifiable pseudorandom value derived from an input. This property enables verifiable, deterministic mask derivation without revealing the private key.
 
-\paragraph{Binding Signature Construction}
+\paragraph{VRF Construction}
 
-The recipient $B$ computes a \emph{binding signature} on the incoming state hash:
+The recipient $B$ computes a \emph{VRF proof} and \emph{output} on the incoming state hash:
 \[
-\sigma_{\mathsf{bind}} \gets \sig(\prikey', \sthash)
+(y, \pi) \gets \mathsf{VRF.Prove}(\prikey', \sthash)
 \]
 
-The mask is derived as:
-\[
-y \gets H(\sigma_{\mathsf{bind}})
-\]
-
-Since the signature scheme is deterministic, $\sigma_{\mathsf{bind}}$ is uniquely determined by $(\prikey', \sthash)$, and hence $y$ is uniquely determined by the incoming transaction state.
+The value $y$ serves as the mask. As the VRF has the uniqueness property, $y$ is uniquely determined by $(\prikey', \sthash)$.
 
 \paragraph{Complete Protocol}
 
@@ -1183,8 +1178,7 @@ Since the signature scheme is deterministic, $\sigma_{\mathsf{bind}}$ is uniquel
 \noindent\textbf{$B$ computes next state}:
 
 \begin{enumerate}
-\item Binding signature: $\sigma_{\mathsf{bind}} \gets \sig(\prikey', \sthash)$
-\item Mask: $y \gets H(\sigma_{\mathsf{bind}})$
+\item VRF computation: $(y, \pi) \gets \mathsf{VRF.Prove}(\prikey', \sthash)$
 \item Next state hash: $\sthash' \gets H(\sthash, y)$
 \end{enumerate}
 
@@ -1197,7 +1191,7 @@ Since the signature scheme is deterministic, $\sigma_{\mathsf{bind}}$ is uniquel
 \item Signature: $\sigma' \gets \sig(\prikey', H(\sthash', \txhash'))$
 \item Request to $\unisrv$: $Q' = (\pubkey', \sthash', \txhash', \sigma')$
 \item Obtain inclusion proof $\pinc'$
-\item Send to $C$: $(T', \sigma', \txhash', d', \pinc'; \sigma_{\mathsf{bind}})$ along with ledger $\mathcal{L}$
+\item Send to $C$: $(T', \sigma', \txhash', d', \pinc'; \pi)$ along with ledger $\mathcal{L}$
 \end{enumerate}
 
 \paragraph{Recipient $C$'s Verification}
@@ -1205,15 +1199,11 @@ Since the signature scheme is deterministic, $\sigma_{\mathsf{bind}}$ is uniquel
 Given the certified transaction, binding signature $\sigma_{\mathsf{bind}}$, and ledger $\mathcal{L}$:
 
 \begin{enumerate}
-\item \textbf{Verify binding signature}:
+\item \textbf{Verify VRF}:
 \[
-\sigver(\pubkey', \sthash, \sigma_{\mathsf{bind}}) \stackrel{?}{=} 1
+\mathsf{VRF.Verify}(\pubkey', \sthash, y, \pi) \stackrel{?}{=} 1
 \]
-
-\item \textbf{Compute mask}:
-\[
-y \gets H(\sigma_{\mathsf{bind}})
-\]
+where $y$ is the claimed mask provided (or derived from $\pi$).
 
 \item \textbf{Verify state hash derivation}:
 \[
@@ -1235,23 +1225,23 @@ If the signature scheme is deterministic and unforgeable, recipient $B$ cannot c
 \end{theorem}
 
 \begin{proof}
-Given a certified transaction in state $(\pubkey, \sthash)$ transferring to $\pubkey'$, the binding signature $\sigma_{\mathsf{bind}} = \sig(\prikey', \sthash)$ is uniquely determined by $\sthash$ and the private key $\prikey'$ corresponding to $\pubkey'$.
+Given a certified transaction in state $(\pubkey, \sthash)$ transferring to $\pubkey'$, the VRF output $y$ is uniquely determined by $\sthash$ and the private key $\prikey'$ corresponding to $\pubkey'$.
 
-For a deterministic signature scheme, there exists exactly one valid signature on message $\sthash$ under key $\prikey'$. Therefore $y = H(\sigma_{\mathsf{bind}})$ is uniquely determined, and consequently $\sthash' = H(\sthash, y)$ is unique.
+For a secure VRF, there exists exactly one valid output $y$ for input $\sthash$ and key $\prikey'$. Therefore $\sthash' = H(\sthash, y)$ is unique.
 
-To produce a different valid state $\sthash'' \neq \sthash'$, party $B$ would need a different valid signature $\sigma'_{\mathsf{bind}}$ satisfying $\sigver(\pubkey', \sthash, \sigma'_{\mathsf{bind}}) = 1$, contradicting determinism.
+To produce a different valid state $\sthash'' \neq \sthash'$, party $B$ would need to produce a valid proof $\pi'$ for a different output $y'$, which contradicts the uniqueness property of the VRF.
 \end{proof}
 
 \begin{theorem}[Timing Privacy]
-If the signature scheme is unforgeable, party $A$ cannot determine when $B$ spends the token.
+If the VRF is pseudorandom, party $A$ cannot determine when $B$ spends the token.
 \end{theorem}
 
 \begin{proof}
-To compute the registry key $H(\pubkey', \sthash')$ that $\unisrv$ will record when $B$ spends, party $A$ must compute $\sthash' = H(\sthash, y)$ where $y = H(\sigma_{\mathsf{bind}})$.
+To compute the registry key $H(\pubkey', \sthash')$ that $\unisrv$ will record when $B$ spends, party $A$ must compute $\sthash' = H(\sthash, y)$ where $y$ is the VRF output.
 
-Party $A$ knows $\pubkey'$ and $\sthash$. However, computing $\sigma_{\mathsf{bind}} = \sig(\prikey', \sthash)$ requires $\prikey'$.
+Party $A$ knows $\pubkey'$ and $\sthash$. However, computing $y$ requires $\prikey'$.
 
-Since $A$ does not possess $\prikey'$, producing a valid $\sigma_{\mathsf{bind}}$ constitutes an existential forgery, contradicting the unforgeability of the signature scheme.
+Since $A$ does not possess $\prikey'$, predicting $y$ contradicts the pseudorandomness property of the VRF.
 \end{proof}
 
 \begin{theorem}[Service-Side Privacy]
@@ -1261,20 +1251,29 @@ The Unicity Service cannot link consecutive token states.
 \begin{proof}
 The service $\unisrv$ observes requests $Q = (\pubkey, \sthash, \txhash, \sigma)$ and $Q' = (\pubkey', \sthash', \txhash', \sigma')$. To link these as consecutive states of the same token, $\unisrv$ must verify that $\sthash' = H(\sthash, y)$ for some valid $y$.
 
-Computing $y = H(\sigma_{\mathsf{bind}})$ requires the binding signature $\sigma_{\mathsf{bind}} = \sig(\prikey', \sthash)$. The service knows $\sthash$ but not $\prikey'$, and therefore cannot compute $\sigma_{\mathsf{bind}}$.
+Computing the VRF output $y$ requires $\prikey'$. The service knows $\sthash$ but not $\prikey'$, and therefore cannot compute $y$.
 
-Without $\sigma_{\mathsf{bind}}$, the service cannot compute $y$ or verify any relationship between $\sthash$ and $\sthash'$.
+Without $y$, the service cannot verify any relationship between $\sthash$ and $\sthash'$ due to the preimage resistance of $H$ and pseudorandomness of $y$.
 \end{proof}
 
 \paragraph{Implementation Considerations}
 
-This protocol requires the mask derivation signature scheme to be deterministic, meaning $\sig(\prikey, m)$ produces the same output for fixed $(\prikey, m)$. Standard choices include:
+This protocol requires a VRF. A practical instantiation of a VRF is a \emph{Unique Signature Scheme}, where for every valid key pair $(pk, sk)$ and message $m$, there exists exactly one signature $\sigma$ such that $\sigver(pk, m, \sigma)=1$.
+
+In this case:
+\begin{enumerate}
+\item $\mathsf{VRF.Prove}(sk, m)$ outputs $\pi = \sigma = \mathsf{Sign}(sk, m)$ and $y = H(\sigma)$.
+\item $\mathsf{VRF.Verify}(pk, m, y, \pi)$ checks $\sigver(pk, m, \pi) \stackrel{?}{=} 1$ and $y \stackrel{?}{=} H(\pi)$.
+\end{enumerate}
+
+\noindent Recommended instantiations include:
 \begin{itemize}
-\item ECDSA with RFC 6979 deterministic $k$ generation
-\item EdDSA (inherently deterministic)
-\item Schnorr signatures with deterministic nonce derivation (BIP-340)
+\item \textbf{BLS Signatures} (Boneh-Lynn-Shacham): BLS signatures are inherently unique.
+\item \textbf{RSA-FDH} (Full Domain Hash): RSA signatures with a full-domain hash are unique.
+\item Specially designed VRF like EC-VRF (RFC 9381).
 \end{itemize}
 
+\noindent Note that deterministic signature shemes like EdDSA and Schnorr are \textbf{not} unique signature schemes as-is and thus are unsafe for this protocol.
 
 \subsection{Combined Protocol with Unlinkable Keys}
 
@@ -1334,13 +1333,11 @@ Party $A$ holds a token in state $(P_A, \sthash)$  (note the ECDSA specific nota
 \item Compute transaction private key $d_{\mathsf{tx}} \gets d_B + s \mod q$
 \end{itemize}
 
-\item \textbf{Binding signature}: $\sigma_{\mathsf{bind}} \gets \sig(d_{\mathsf{tx}}, \sthash)$
-
-\item \textbf{Mask derivation}: $y \gets H(\sigma_{\mathsf{bind}})$
+\item \textbf{VRF computation}: $(y, \pi) \gets \mathsf{VRF.Prove}(d_{\mathsf{tx}}, \sthash)$
 
 \item \textbf{Next state}: $\sthash' \gets H(\sthash, y)$
 
-\item \textbf{Store}: $(d_{\mathsf{tx}}, \sthash', \sigma_{\mathsf{bind}})$ for spending
+\item \textbf{Store}: $(d_{\mathsf{tx}}, \sthash', \pi)$ for spending
 \end{enumerate}
 
 \paragraph{Transaction $B \to C$}
@@ -1364,7 +1361,7 @@ Party $B$ spends the token to party $C$ with persistent public key $P_C$.
 
 \item \textbf{Certification}: $Q' = (P_{\mathsf{tx}}, \sthash', \txhash', \sigma')$, obtain $\pinc' \gets \unisrv(Q')$
 
-\item \textbf{Send to $C$}: $(T', \sigma', \txhash', d', \pinc'; \sigma_{\mathsf{bind}})$ along with ledger $\mathcal{L}$
+\item \textbf{Send to $C$}: $(T', \sigma', \txhash', d', \pinc'; \pi)$ along with ledger $\mathcal{L}$
 \end{enumerate}
 
 \subsubsection{Transaction Verification}
@@ -1372,16 +1369,11 @@ Party $B$ spends the token to party $C$ with persistent public key $P_C$.
 Given the certified transaction, binding signature $\sigma_{\mathsf{bind}}$, and ledger $\mathcal{L}$:
 
 \begin{enumerate}
-\item \textbf{Verify binding signature}:
+\item \textbf{Verify VRF}:
 \[
-\sigver(P_{\mathsf{tx}}, \sthash_{\mathsf{prev}}, \sigma_{\mathsf{bind}}) \stackrel{?}{=} 1
+\mathsf{VRF.Verify}(P_{\mathsf{tx}}, \sthash_{\mathsf{prev}}, y, \pi) \stackrel{?}{=} 1
 \]
 where $P_{\mathsf{tx}}$ is the transaction public key from the previous transaction's data.
-
-\item \textbf{Compute mask}:
-\[
-y \gets H(\sigma_{\mathsf{bind}})
-\]
 
 \item \textbf{Verify state hash derivation}:
 \[
