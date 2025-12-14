@@ -5,7 +5,7 @@
 \usepackage{amsmath} % xleftarrow
 \usepackage{enumitem}
 \setlist[itemize]{noitemsep} % compact itemize
-% \setlist[enumerate]{noitemsep}
+\setlist[enumerate]{noitemsep}
 
 \newtheorem{definition}{Definition}[section]
 \newtheorem{theorem}{Theorem}[section]
@@ -22,6 +22,7 @@
 
 \newcommand{\pubkey}[0]{\mathsf{pk}}
 \newcommand{\prikey}[0]{\mathsf{sk}}
+\newcommand{\mpubkey}{\widetilde{\pubkey}}
 
 \newcommand{\hfgen}[0]{\mathsf{G}} % parameter generation for a hash function family
 \newcommand{\hfunc}[0]{\mathsf{H}} % parametrized hashing algorithm
@@ -995,6 +996,284 @@ At the same time, there seem to be no obvious ways of proving that such a simpli
 
 Still, it may be a plausible practical assumption that given $\sthash$ and the next state hash $\sthash'=H(\sthash,x)$ and $\txhash = H(\pubkey',x,\auxd')$ it is infeasible to find $x'$ so that $H(\sthash,x')=\sthash'$. At least for example, if $H$ is \textsf{SHA-256}, there seem to be no obvious ways how to do it if $x$ has sufficiently many random bits.
 
+\subsection{Next Transaction Timing Privacy}
+
+While the Unicity infrastructure prevents the Unicity Service from linking consecutive transactions with the same token, a different privacy issue emerges in direct peer-to-peer transfers.
+
+\paragraph{The Privacy Leak}
+
+Consider a transaction where party $A$ (the sender) transfers a token to party $B$ (the recipient). During this transfer, $A$ possesses the following information:
+\begin{itemize}
+\item The recipient's public key $\pubkey'$
+\item The random nonce $x \gets \{0,1\}^\ell$ used in the transaction data
+\item The current state hash $\sthash$ of the token
+\end{itemize}
+
+\noindent From this information, $A$ can compute the next state hash:
+\[
+\sthash' = H(\sthash, x) \enspace.
+\]
+
+\noindent When $B$ subsequently spends the token by executing a transaction, the Unicity Service records the mapping $R[H(\pubkey', \sthash')] \gets \txhash'$ for some transaction hash $\txhash'$. Since the registry $R$ is publicly accessible (anyone can query whether $R[k] = \bot$ for any key $k$), party $A$ can fetch the key $H(\pubkey', \sthash')$ to detect when $B$ spends the token.
+
+This represents a timing privacy leak: although $A$ cannot determine the recipient of $B$'s subsequent transaction nor the transaction details, $A$ learns the \emph{moment} when $B$ chooses to spend the token. In contexts where transaction timing correlates with sensitive information (e.g., spending patterns revealing business activities), this leakage may be undesirable.
+
+\paragraph{Impact} The practical significance of the leak is limited, as:
+\begin{itemize}
+\item The leak reveals only timing information, not transaction content or recipient identity
+\item It requires the sender to actively and continuously monitor the registry
+\item It applies only to the next direct transfer
+\end{itemize}
+
+\noindent Nevertheless, we present two mitigation strategies for contexts where even timing privacy is required.
+
+\subsection{Solution 1: Timing Obfuscation}
+
+The simplest mitigation strategy is for party $B$ to introduce uncertainty about the actual spending moment through a dummy transaction, e.g. to himself. Specifically:
+
+\begin{itemize}
+\item Upon receiving a token, $B$ may probabilistically execute a transaction to themselves
+\item This creates a registry entry $R[H(\pubkey', \sthash')] \gets \txhash'$ at a time chosen by $B$
+\item The token's state then transitions to $(\pubkey'', \sthash'')$ where $\pubkey'' = \pubkey'$ and $\sthash'' = H(\sthash', x')$ for a fresh random $x' \gets \{0,1\}^\ell$
+\item Party $A$ may observe the registry update but cannot distinguish whether $B$ has genuinely spent the token or executed a dummy self-transfer
+\end{itemize}
+
+\noindent By randomizing the decision to make such self-transfers, $B$ can effectively hide the timing of the actual spending transaction. The trade-off is the cost of additional transactions to the Unicity Service and the increased transaction history length.
+
+\subsection{Solution 2: Masked Address Protocol}
+
+An interactive protocol that prevents $A$ from computing the observable registry key prevents such leak. The recipient $B$ computes a masking key $y$ which blinds the recipient's identity and provides the randomness needed for the next state hash. There is no need for $x$ from the base protocol.
+
+\paragraph{Protocol}
+
+\begin{enumerate}
+\item \textbf{Recipient generates masked address}: Party $B$ samples a random mask $y \gets \{0,1\}^\ell$ and computes:
+\[
+\mpubkey' \gets H(\pubkey', y) \enspace.
+\]
+
+\item \textbf{Address exchange}: $B$ sends $\mpubkey'$ to $A$.
+
+\item \textbf{Transaction creation}: $A$ creates transaction data $D = (\mpubkey', \auxd')$ (note: no $x$ field), computes the commitment $(\txhash, d) \gets \commit(H(D))$, creates signature $\sigma \gets \sig(\prikey, H(\sthash, \txhash))$, and obtains inclusion proof $\pinc \gets \unisrv(\pubkey, \sthash, \txhash, \sigma)$.
+
+\item \textbf{Transaction transmission}: $A$ sends $(T, \sigma, \txhash, d, \pinc)$ to $B$. Note that $y$ need not be transmitted since $B$ already possesses it.
+
+\item \textbf{State hash computation}: Upon receiving the certified transaction, $B$ computes the next state hash as:
+\[
+\sthash' \gets H(\sthash, y) \enspace.
+\]
+
+\item \textbf{Token ledger verification}: When $B$ presents the token to a third party or spends it, the ledger entry $(T, \sigma, \txhash, d, \pinc; \pubkey, \sthash)$ must be verified along with the tuple $(\pubkey', y)$ where:
+\begin{itemize}
+\item $H(\pubkey', y) = T.D.\mpubkey'$ (mask consistency)
+\item $\sthash' = H(\sthash, y)$ (state hash derivation)
+\end{itemize}
+
+\item \textbf{Spending the token}: $B$ spends from state $(\pubkey', \sthash')$ by creating a new certification request $Q' = (\pubkey', \sthash', \txhash'', \sigma')$ to the Unicity Service.
+\end{enumerate}
+
+\paragraph{Security Against Double-Spending}
+
+The simplified protocol maintains the fundamental double-spending prevention property. We must verify that $B$ cannot create multiple valid next states from a single certified transaction.
+
+\begin{theorem}[No Parallel Registry Entries]
+If $H$ is $S$-secure collision-resistant, then recipient $B$ cannot create two distinct valid next states from a single certified transaction.
+\end{theorem}
+
+\begin{proof}
+Assume $B$ receives a certified transaction $(T, \sigma, \txhash, d, \pinc)$ in state $(\pubkey, \sthash)$, where $T.D.\mpubkey' = H(\pubkey', y)$ for $B$'s public key $\pubkey'$ and mask $y$.
+
+Suppose $B$ attempts to create two distinct next states $(\pubkey', \sthash'_1)$ and $(\pubkey', \sthash'_2)$ with $\sthash'_1 \neq \sthash'_2$. For both states to be valid continuations from the certified transaction, there must exist masks $y_1, y_2$ such that:
+\begin{align*}
+H(\pubkey', y_1) &= T.D.\mpubkey' = H(\pubkey', y_2) \\
+\sthash'_1 &= H(\sthash, y_1) \\
+\sthash'_2 &= H(\sthash, y_2)
+\end{align*}
+
+From the first equation, if $H$ is collision-resistant, then with overwhelming probability $y_1 = y_2$, which implies $\sthash'_1 = H(\sthash, y_1) = H(\sthash, y_2) = \sthash'_2$, contradicting the assumption that $\sthash'_1 \neq \sthash'_2$.
+
+More formally, if $B$ could create such distinct states, then $B$ could be used to construct a collision-finding adversary $A_{\mathsf{coll}}$ that outputs $((\pubkey', y_1), (\pubkey', y_2))$ with $y_1 \neq y_2$ but $H(\pubkey', y_1) = H(\pubkey', y_2)$, contradicting the collision-resistance of $H$.
+
+Therefore, the certified transaction from $A$ uniquely determines $B$'s next state as $(\pubkey', H(\sthash, y))$ where $y$ is the unique preimage (up to collisions) of $T.D.\mpubkey'$ under the function $H(\pubkey', \cdot)$.
+\end{proof}
+
+\paragraph{Security Against Blocking}
+
+The masked protocol inherits the blocking resistance of the standard protocol:
+
+\begin{theorem}[No Blocking in Masked Address Protocol]
+The masked protocol is $S_{\mathsf{block}}$-secure against blocking with the same security profile as the standard protocol.
+\end{theorem}
+
+\begin{proof}
+The blocking security analysis from Section~\ref{sec:blocking} applies directly. The only modification is that transaction data now has the form $D = (\mpubkey', \auxd')$ instead of $D = (\pubkey', x, \auxd')$.
+
+An adversary attempting to block state $(\pubkey', \sthash')$ must create a valid certification request $Q = (\pubkey', \sthash', \txhash, \sigma)$ where $\sigver(\pubkey', H(\sthash', \txhash), \sigma) = 1$. This requires either:
+\begin{itemize}
+\item Breaking the signature scheme (existential forgery), or
+\item Finding a collision in $H$ to reuse a previous signature
+\end{itemize}
+
+Neither attack is facilitated by the removal of $x$ from the transaction structure. The security reduction proceeds identically to Theorem~1 in Section~\ref{sec:blocking}.
+\end{proof}
+
+\paragraph{Timing Privacy}
+
+The masked protocol provides next transaction timing privacy:
+
+\begin{theorem}[Timing Privacy in Masked Address Protocol]
+If $H$ is $(k, \ell)$-one-way, party $A$ cannot feasibly determine when party $B$ spends the token.
+\end{theorem}
+
+\begin{proof}
+For $A$ to monitor when $B$ spends the token, $A$ must compute the registry key $k' = H(\pubkey', \sthash')$ that will be set upon $B$'s certification request. This requires computing $\sthash' = H(\sthash, y)$.
+
+Party $A$ knows $\sthash$ and $\mpubkey' = H(\pubkey', y)$ but not $y$. To compute $\sthash'$, $A$ must:
+\begin{enumerate}
+\item Extract $y$ from $\mpubkey'$ and $\pubkey'$ (which may not be known to $A$), or
+\item Guess $y$ and verify the guess by checking if $H(\sthash, y)$ matches some observed registry entry
+\end{enumerate}
+
+Option (1) requires inverting $H(\pubkey', \cdot)$, contradicting the one-wayness of $H$. Option (2) fails because $A$ cannot determine $\pubkey'$ from $\mpubkey'$ (again by one-wayness) and thus cannot construct the registry key $H(\pubkey', H(\sthash, y))$ to verify any guess.
+\end{proof}
+
+
+\paragraph{Implementation Considerations}
+
+The masked protocol requires $B$ to reliably store the mask $y$ along with the private key $\prikey'$ and state hash $\sthash'$ until making the next transaction. Loss of $y$ renders the token unspendable, as $B$ cannot prove that $\sthash' = H(\sthash, y)$ is the legitimate next state derived from the previous owner's certified transaction.
+
+
+\subsection{Solution 3: Non-Interactive Masked Protocol}
+
+The interactive masked protocol requires the recipient to generate and communicate $\mpubkey' = H(\pubkey', y)$ before the sender can construct the transaction. We now present a non-interactive variant that eliminates this communication round while preserving all security properties.
+
+\subsubsection{Mask Derivation via Binding Signature}
+
+We observe that deterministic signature schemes (e.g., EdDSA) produce a unique signature for any given message and private key. This property enables verifiable, deterministic mask derivation without revealing the private key.
+
+\paragraph{Binding Signature Construction}
+
+The recipient $B$ computes a \emph{binding signature} on the incoming state hash:
+\[
+\sigma_{\mathsf{bind}} \gets \sig(\prikey', \sthash)
+\]
+
+The mask is derived as:
+\[
+y \gets H(\sigma_{\mathsf{bind}})
+\]
+
+Since the signature scheme is deterministic, $\sigma_{\mathsf{bind}}$ is uniquely determined by $(\prikey', \sthash)$, and hence $y$ is uniquely determined by the incoming transaction state.
+
+\paragraph{Complete Protocol}
+
+\medskip
+\noindent\textbf{Transaction $A \to B$}:
+
+\begin{enumerate}
+\item Transaction data: $D = (\pubkey', \auxd')$
+\item Commitment: $(\txhash, d) \gets \commit(H(D))$
+\item Signature: $\sigma \gets \sig(\prikey, H(\sthash, \txhash))$
+\item Request to $\unisrv$: $Q = (\pubkey, \sthash, \txhash, \sigma)$
+\item Obtain inclusion proof $\pinc$
+\item Send to $B$: $(T, \sigma, \txhash, d, \pinc)$ where $T = (\sthash, D)$
+\end{enumerate}
+
+\medskip
+\noindent\textbf{$B$ computes next state}:
+
+\begin{enumerate}
+\item Binding signature: $\sigma_{\mathsf{bind}} \gets \sig(\prikey', \sthash)$
+\item Mask: $y \gets H(\sigma_{\mathsf{bind}})$
+\item Next state hash: $\sthash' \gets H(\sthash, y)$
+\end{enumerate}
+
+\medskip
+\noindent\textbf{Transaction $B \to C$}:
+
+\begin{enumerate}
+\item Transaction data: $D' = (\pubkey'', \auxd'')$
+\item Commitment: $(\txhash', d') \gets \commit(H(D'))$
+\item Signature: $\sigma' \gets \sig(\prikey', H(\sthash', \txhash'))$
+\item Request to $\unisrv$: $Q' = (\pubkey', \sthash', \txhash', \sigma')$
+\item Obtain inclusion proof $\pinc'$
+\item Send to $C$: $(T', \sigma', \txhash', d', \pinc'; \sigma_{\mathsf{bind}})$ along with ledger $\mathcal{L}$
+\end{enumerate}
+
+\paragraph{Recipient $C$'s Verification}
+
+Given the certified transaction, binding signature $\sigma_{\mathsf{bind}}$, and ledger $\mathcal{L}$:
+
+\begin{enumerate}
+\item \textbf{Verify binding signature}:
+\[
+\sigver(\pubkey', \sthash, \sigma_{\mathsf{bind}}) \stackrel{?}{=} 1
+\]
+
+\item \textbf{Compute mask}:
+\[
+y \gets H(\sigma_{\mathsf{bind}})
+\]
+
+\item \textbf{Verify state hash derivation}:
+\[
+\sthash' \stackrel{?}{=} H(\sthash, y)
+\]
+
+\item \textbf{Verify certified transaction}:
+\[
+\certver(T', \sigma', \txhash', d', \pinc'; \pubkey', \sthash') \stackrel{?}{=} 1
+\]
+
+\item \textbf{Verify ledger}: Recursively verify all previous transactions in $\mathcal{L}$
+\end{enumerate}
+
+\paragraph{Security Analysis}
+
+\begin{theorem}[No Double-Spending]
+If the signature scheme is deterministic and unforgeable, recipient $B$ cannot create two distinct valid next states from a single certified transaction.
+\end{theorem}
+
+\begin{proof}
+Given a certified transaction in state $(\pubkey, \sthash)$ transferring to $\pubkey'$, the binding signature $\sigma_{\mathsf{bind}} = \sig(\prikey', \sthash)$ is uniquely determined by $\sthash$ and the private key $\prikey'$ corresponding to $\pubkey'$.
+
+For a deterministic signature scheme, there exists exactly one valid signature on message $\sthash$ under key $\prikey'$. Therefore $y = H(\sigma_{\mathsf{bind}})$ is uniquely determined, and consequently $\sthash' = H(\sthash, y)$ is unique.
+
+To produce a different valid state $\sthash'' \neq \sthash'$, party $B$ would need a different valid signature $\sigma'_{\mathsf{bind}}$ satisfying $\sigver(\pubkey', \sthash, \sigma'_{\mathsf{bind}}) = 1$, contradicting determinism.
+\end{proof}
+
+\begin{theorem}[Timing Privacy]
+If the signature scheme is unforgeable, party $A$ cannot determine when $B$ spends the token.
+\end{theorem}
+
+\begin{proof}
+To compute the registry key $H(\pubkey', \sthash')$ that $\unisrv$ will record when $B$ spends, party $A$ must compute $\sthash' = H(\sthash, y)$ where $y = H(\sigma_{\mathsf{bind}})$.
+
+Party $A$ knows $\pubkey'$ and $\sthash$. However, computing $\sigma_{\mathsf{bind}} = \sig(\prikey', \sthash)$ requires $\prikey'$.
+
+Since $A$ does not possess $\prikey'$, producing a valid $\sigma_{\mathsf{bind}}$ constitutes an existential forgery, contradicting the unforgeability of the signature scheme.
+\end{proof}
+
+\begin{theorem}[Service-Side Privacy]
+The Unicity Service cannot link consecutive token states.
+\end{theorem}
+
+\begin{proof}
+The service $\unisrv$ observes requests $Q = (\pubkey, \sthash, \txhash, \sigma)$ and $Q' = (\pubkey', \sthash', \txhash', \sigma')$. To link these as consecutive states of the same token, $\unisrv$ must verify that $\sthash' = H(\sthash, y)$ for some valid $y$.
+
+Computing $y = H(\sigma_{\mathsf{bind}})$ requires the binding signature $\sigma_{\mathsf{bind}} = \sig(\prikey', \sthash)$. The service knows $\sthash$ but not $\prikey'$, and therefore cannot compute $\sigma_{\mathsf{bind}}$.
+
+Without $\sigma_{\mathsf{bind}}$, the service cannot compute $y$ or verify any relationship between $\sthash$ and $\sthash'$.
+\end{proof}
+
+\paragraph{Implementation Considerations}
+
+This protocol requires the signature scheme to be deterministic, meaning $\sig(\prikey, m)$ produces the same output for fixed $(\prikey, m)$. Standard choices include:
+\begin{itemize}
+\item ECDSA with RFC 6979 deterministic $k$ generation
+\item EdDSA (inherently deterministic)
+\item Schnorr signatures with deterministic nonce derivation (BIP-340)
+\end{itemize}
 
 \include{unicity-private-wallet}
 
@@ -1009,6 +1288,7 @@ In: Koblitz, N. (Ed.) CRYPTO’96. LNCS 1109, pp. 1--15 (1996)
 \bibitem{ecdsa}
 Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature algorithm (ECDSA). In: International journal of information security, 1(1), pp. 36--63 (2001)
 % http://cacr.uwaterloo.ca/techreports/1999/corr99-34.pdf
+
 
 \end{thebibliography}
 
