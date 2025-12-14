@@ -1473,5 +1473,180 @@ Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature alg
     \end{center}
 \end{figure}
 
+
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{sequencediagram}
+            \newthread{S}{Sender $A$}
+            \newinst[2.5]{R}{Recipient $B$}
+            \newinst[2]{US}{Unicity Service}
+
+            \postlevel
+            % Recipient generates masked address
+            \begin{call}{R}{\shortstack[l]{
+                $y \gets \{0,1\}^\ell$     \\
+                $\mpubkey' \gets H(\pubkey', y)$
+            }}{R}{}
+            \end{call}
+
+            % Recipient sends masked address
+            \begin{messcall}{R}{$\mpubkey'$}{S}
+            \end{messcall}
+
+            % Sender creates transaction
+            \postlevel
+            \postlevel
+            \begin{call}{S}{\shortstack[l]{
+                    $D = (\mpubkey', \auxd')$ \\
+                    $T = (\sthash, D)$ \\
+                    $(\txhash, d) \gets \commit(H(D))$ \\
+                    $\sigma \gets \sig(\prikey, H(\sthash, \txhash))$
+                }}{S}{}
+            \end{call}
+
+            % Certification request
+            \begin{messcall}{S}{$Q = (\pubkey, \sthash, \txhash, \sigma)$}{US}
+                \postlevel
+                \begin{call}{US}{\shortstack[l]{
+                    $\sigver(\pubkey, H(\sthash, \txhash), \sigma) \stackrel{?}{=} 1$ \\
+                    $R[H(\pubkey, \sthash)] \stackrel{?}{=} \bot$ \\
+                    $R[H(\pubkey, \sthash)] \gets \txhash$
+                    }}{US}{}
+                \end{call}
+            \end{messcall}
+            \prelevel
+            \begin{messcall}{US}{$\pinc$}{S}
+            \end{messcall}
+
+            % Send to recipient
+            \begin{messcall}{S}{$(T, \sigma, \txhash, d, \pinc)$}{R}
+                \postlevel
+                \postlevel
+                \begin{call}{R}{\shortstack[l]{
+                    $\certver(T, \sigma, \txhash, d, \pinc; \pubkey, \sthash) \stackrel{?}{=} 1$ \\
+                    $H(\pubkey', y) \stackrel{?}{=} T.D.\mpubkey'$ \\
+                    $\sthash' \gets H(\sthash, y)$
+                    }}{R}{}
+                \end{call}
+            \end{messcall}
+        \end{sequencediagram}
+        \caption{Masked Address Protocol (Interactive). Recipient generates masked address $\mpubkey' = H(\pubkey', y)$ to prevent sender from inferring next state.}\label{fi:masked-protocol}
+    \end{center}
+\end{figure}
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{sequencediagram}
+            \newthread{S}{Sender $A$}
+            \newinst[2.5]{R}{Recipient $B$}
+            \newinst[2]{US}{Unicity Service}
+
+            % Sender creates transaction (no interaction needed)
+            \postlevel
+            \postlevel
+            \postlevel
+            \begin{call}{S}{\shortstack[l]{
+                    $D = (\pubkey', \auxd')$ \\
+                    $T = (\sthash, D)$ \\
+                    $(\txhash, d) \gets \commit(H(D))$ \\
+                    $\sigma \gets \sig(\prikey, H(\sthash, \txhash))$
+                }}{S}{}
+            \end{call}
+
+            % Certification request
+            \begin{messcall}{S}{$Q = (\pubkey, \sthash, \txhash, \sigma)$}{US}
+                \postlevel
+                \begin{call}{US}{\shortstack[l]{
+                    $\sigver(\pubkey, H(\sthash, \txhash), \sigma) \stackrel{?}{=} 1$ \\
+                    $R[H(\pubkey, \sthash)] \stackrel{?}{=} \bot$ \\
+                    $R[H(\pubkey, \sthash)] \gets \txhash$
+                    }}{US}{}
+                \end{call}
+            \end{messcall}
+            \prelevel
+            \begin{messcall}{US}{$\pinc$}{S}
+            \end{messcall}
+
+            % Send to recipient
+            \begin{messcall}{S}{$(T, \sigma, \txhash, d, \pinc)$}{R}
+                \postlevel
+                \postlevel
+                \begin{call}{R}{\shortstack[l]{
+                    $\certver(T, \sigma, \txhash, d, \pinc; \pubkey, \sthash) \stackrel{?}{=} 1$ \\
+                    $(y, \pi) \gets \mathsf{VRF.Prove}(\prikey', \sthash)$ \\
+                    $\sthash' \gets H(\sthash, y)$
+                    }}{R}{}
+                \end{call}
+            \end{messcall}
+        \end{sequencediagram}
+        \caption{Non-Interactive Masked Protocol. Recipient derives deterministic mask $y$ via VRF without prior interaction.}\label{fi:non-interactive-masked}
+    \end{center}
+\end{figure}
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{sequencediagram}
+            \newthread{S}{Sender $A$}
+            \newinst[2.5]{R}{Recipient $B$}
+            \newinst[2]{US}{Unicity Service}
+
+            % Sender creates transaction with key derivation
+            \postlevel
+            \postlevel
+            \postlevel
+            \begin{call}{S}{\shortstack[l]{
+                    $r \gets \mathbb{Z}_q$, $R \gets [r]G$ \\
+                    $S \gets [r]P_B$ \\
+                    $s \gets H_{\mathsf{key}}(S, R, \sthash)$ \\
+                    $P_{\mathsf{tx}} \gets P_B + [s]G$ \\
+                    $D = (P_{\mathsf{tx}}, R, \auxd')$
+                }}{S}{}
+            \end{call}
+
+            \postlevel
+            \begin{call}{S}{\shortstack[l]{
+                    $(\txhash, d) \gets \commit(H(D))$ \\
+                    $\sigma \gets \sig(d_A, H(\sthash, \txhash))$
+                }}{S}{}
+            \end{call}
+
+            % Certification
+            \begin{messcall}{S}{$Q = (P_A, \sthash, \txhash, \sigma)$}{US}
+                \postlevel
+                \begin{call}{US}{\shortstack[l]{
+                    $\sigver(P_A, H(\sthash, \txhash), \sigma) \stackrel{?}{=} 1$ \\
+                    $R[H(P_A, \sthash)] \gets \txhash$
+                    }}{US}{}
+                \end{call}
+            \end{messcall}
+            \prelevel
+            \begin{messcall}{US}{$\pinc$}{S}
+            \end{messcall}
+
+            % Send to recipient
+            \begin{messcall}{S}{$(T, \sigma, \txhash, d, \pinc)$}{R}
+                \postlevel
+                \postlevel
+                \begin{call}{R}{\shortstack[l]{
+                    $S \gets [d_B]R$ \\
+                    $s \gets H_{\mathsf{key}}(S, R, \sthash)$ \\
+                    $P_B + [s]G \stackrel{?}{=} P_{\mathsf{tx}}$ \\
+                    $d_{\mathsf{tx}} \gets d_B + s$
+                    }}{R}{}
+                \end{call}
+                \postlevel
+                \begin{call}{R}{\shortstack[l]{
+                    $(y, \pi) \gets \mathsf{VRF.Prove}(d_{\mathsf{tx}}, \sthash)$ \\
+                    $\sthash' \gets H(\sthash, y)$
+                    }}{R}{}
+                \end{call}
+            \end{messcall}
+        \end{sequencediagram}
+        \caption{Combined Protocol with Unlinkable Keys. Recipient's permanent public key is $P_B$. Sender derives unlinkable transaction key $P_{\mathsf{tx}} = P_B + [s]G$ using ECDH. Recipient derives private key and mask via VRF.}\label{fi:combined-protocol}
+    \end{center}
+\end{figure}
+
+
 \end{document}
 
