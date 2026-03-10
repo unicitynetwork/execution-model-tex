@@ -1,6 +1,51 @@
 (* ==================================================================== *)
 (* EasyCrypt Formalization: Unicity Security against Double-Spending    *)
-(* ==================================================================== *)
+(* Unicity Execution Layer
+
+TL;DR: A party can double-spend his token in Unicity system only if he is able to
+       either break the collision resistance of the hash function or break the
+       binding property of the commitment scheme.
+
+  See the paper, section 5.2 Security against Double-Spending
+
+  Double-spending is creating two independent valid transactions from the same
+  token source state which share the same slot in the Unicity Service's R.
+
+  Adversary A has oracle access to US.
+
+  The attack scenario:
+     1. (T, σ, h_tx, d, π_inc), (T', σ', h_tx', d', π_inc'), (pk, h)  <- A^US
+     2. A suceeds if both transactions are valid and share the same US slot (pk,h):
+         V_cert(T, σ, h_tx, d, π_inc; pk, h) = 1  AND
+         V_cert(T', σ', h_tx', d', π_inc'; pk, h) = 1
+
+  Theorem: Security against Double-Spending
+
+  A successful double-spend stores in the global variables:
+    DoubleSpendGame.result = (T, T', c, d, d')   with  T ≠ T'
+    DoubleSpendGame.m1     = open(c, d)  = Some(hash T)
+    DoubleSpendGame.m2     = open(c, d') = Some(hash T')
+
+  Case (a): hash T = hash T'
+    CollisionReduction(A) outputs (T, T') --> CollisionGame wins.
+
+  Case (b): hash T ≠ hash T'
+    Some(hash T) ≠ Some(hash T'), so DoubleSpendGame.m1 ≠ DoubleSpendGame.m2
+    with both non-None --> BindingReduction(A) wins.
+
+  Hence Adv[DS] ≤ Adv[Coll] + Adv[Bind].
+
+  EasyCrypt steps:
+    1. byequiv (using A_attack_coupling):
+         Pr[CollisionGame(CollisionReduction(A))] =
+         Pr[DoubleSpendGame(A) on DoubleSpendGame.result collision sub-event]
+    2. byequiv (using A_attack_coupling):
+         Pr[BindingGame(BindingReduction(A))] =
+         Pr[DoubleSpendGame(A) on DoubleSpendGame.m1/m2 binding-break sub-event]
+    3. Pr[mu_le]:    res ==> (collision \/ binding-break)
+    4. Pr[mu_or_le]: union bound
+    5. Rewrite via Steps 1-2.
+*)
 
 require import AllCore.
 
@@ -189,8 +234,4 @@ Adv^ds_Unicity(A) <= Adv^coll_H(CollisionReduction(A)) + Adv^bind_Com(BindingRed
 Double-spending security reduces to:
 1. Collision resistance of the hash function H
 2. Computational binding of the commitment scheme
-
-TL;DR: A party can double-spend his token in Unicity system only if he is able to
-       either break the collision resistance of the hash function or break the
-       binding property of the commitment scheme.
 *)

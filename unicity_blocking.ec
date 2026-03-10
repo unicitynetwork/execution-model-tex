@@ -1,8 +1,42 @@
 (* ==================================================================== *)
 (* EasyCrypt Formalization: Security Against Blocking                   *)
-(* Unicity Execution Layer                                              *)
-(* ==================================================================== *)
+(* Unicity Execution Layer
 
+   TL;DR: A malicious party in Unicity system can block other user's token from
+   spending by setting a leaf in Unicity Oracle only if the attacker is able
+   to either break collision resitance of the hash function or forge signatures
+   of the signature scheme.
+
+   Details: Section 5.1, Security against Blocking
+
+   A blocking adversary A uses two oracles:
+      1. US: the Unicity Service,
+      2. TS(sk,·): the transaction signer.
+
+   Security game where A breaks the security against blocking:
+     1. (pk, sk) <- G                   // key generation
+     2. h_st <- A^{US, TS(sk,·)}(pk)    // A has access to two oracles
+     3. A wins if R[H(pk, h_st)] ≠ ⊥  AND  no TS oracle query used h_st
+         // that is, US has the leaf blocked in its repository R, but
+         // no-one signed the US request (TS haven't seen h_st)
+
+   Three exhaustive cases of a winning attack:
+     (a)  US received (pk', h_st', ·, ·) with H(pk',h_st') = H(pk,h_st)
+          but (pk',h_st') ≠ (pk,h_st)          --> hreg collision
+     (b1) TS received (h_st', D) with h_st' ≠ h_st but
+          H(h_st', H(D)) = H(h_st, h_tx)       --> hmsg collision
+     (b2) A valid US request (pk, h_st, h_tx, σ) where no TS query
+          produced message H(h_st, h_tx)       --> EUF-CMA forgery
+
+   Main theorem:
+     Adv^block(A) ≤ Adv^hreg-coll + Adv^hmsg-coll + Adv^EUF-CMA
+
+    that is, the success probability (advantage) of A winning the blocking
+     game is bounded by success probabilities of breaking collision resistance
+     of the hash function and success probability of creating an existential
+     forgery of the signature scheme (forging a signature on chosen message).
+
+*)
 require import AllCore List.
 
 (* ------------------------------------------------------------------ *)
@@ -391,9 +425,4 @@ end section BlockingSecurity.
   (b1) into a single collision-finder A_coll and uses one collision
   game.  This formalization keeps them separate (one game per hash
   domain) for precision; the bound differs only by a factor of 2.
-
-  TL;DR: A malicious party in Unicity system can block other user's token from
-  spending by setting a leaf in Unicity Oracle only if the attacker is able
-  to either break collision resitance of the hash function or forge signatures
-  of the signature scheme.
 *)
