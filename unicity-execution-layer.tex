@@ -4,6 +4,8 @@
 \usepackage{amssymb}
 \usepackage{amsmath} % xleftarrow
 \usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{url}
 \setlist[itemize]{noitemsep} % compact itemize
 \setlist[enumerate]{noitemsep}
 
@@ -65,9 +67,7 @@
 \maketitle
 
 \begin{abstract}
-This paper introduces the Unicity Execution Layer, a modular component of the Unicity framework enabling secure off-chain transactions while maintaining trustless double-spending prevention. We present a formal security model where token ownership is represented by public keys and transfers require digital signatures. We prove three fundamental security properties: (1) no double-spending---each token state can be spent at most once, (2) no blocking---only the legitimate owner can prevent a token from being spent, and (3) service-side privacy---the Unicity Service cannot link transactions with the same token.
-
-We extend this model in two directions. First, we generalize ownership to programmable spending conditions called \emph{predicates}, enabling smart-contract like functionality executed off-chain directly by relying parties rather than by consensus participants. We prove that all three security properties are preserved under reduction to predicate family unforgeability. Second, we present multi-public-key signature schemes that allow one secret to generate multiple unlinkable public keys, enabling efficient private transactions with stable public identity while eliminating key management overhead. This work provides the formal foundation for a scalable, privacy-preserving blockchain architecture that moves transaction execution off-chain while maintaining security guarantees typical to public permissionless blockchains.
+This paper introduces the Unicity Execution Layer, a modular component of the Unicity framework enabling secure off-chain transactions while maintaining trustless double-spending prevention. We present a formal security model where token ownership is represented by public keys and transfers require digital signatures. We prove three fundamental security properties: (1) no double-spending---each token state can be spent at most once, (2) no blocking---only the legitimate owner can prevent a token from being spent, and (3) service-side privacy---the Unicity Service cannot link transactions with the same token. The user-side privacy is addressed by introducing generalized multi-public-key signature schemes that allow one secret to generate multiple unlinkable public keys, and an interactive and non-interactive concrete instantiations, enabling private transactions with stable public identity with minimal key management overhead.
 \end{abstract}
 
 \section{Introduction}
@@ -141,7 +141,7 @@ The three layers serve distinct functions:
 
 \item \textbf{Aggregation Layer} implements the Unicity Service, maintaining a global append-only registry of spent token states. It provides inclusion and non-inclusion proofs, processes state certification requests, and with these services allows Execution Layer to avoid the risk of double-spending. The layer is sharded for scalability, clustered for high availability, and uses cryptographic consistency proofs to maintain trustless operation.
 
-\item \textbf{Execution Layer} handles transaction processing, smart contract execution (implemented through orchestrated execution of programmable stateful spending conditions, called \emph{predicates}, discussed in a follow-up paper; and business logic. This layer operates off-chain and is managed by users and agents who are interested parties in transaction validation and ordering.
+\item \textbf{Execution Layer} handles transaction processing, smart contract execution (implemented through orchestrated execution of programmable stateful spending conditions, called \emph{predicates}, discussed in a follow-up paper\cite{predicates}; and business logic. This layer operates off-chain and is managed by users and agents who are interested parties in transaction validation and ordering.
 \end{itemize}
 
 \subsection{Unicity Service Protocol}
@@ -1402,6 +1402,9 @@ In: Koblitz, N. (Ed.) CRYPTO’96. LNCS 1109, pp. 1--15 (1996)
 \bibitem{ecdsa}
 Johnson, D., Menezes, A., Vanstone, S.: The elliptic curve digital signature algorithm (ECDSA). In: International journal of information security, 1(1), pp. 36--63 (2001)
 % http://cacr.uwaterloo.ca/techreports/1999/corr99-34.pdf
+
+\bibitem{predicates}
+Buldas, A., Laanoja, R., Rogojin, V., Truu, A.: Unicity: Predicates and Atomic Swaps. (Manuscript, 2025) {\url{https://github.com/unicitynetwork/unicity-predicates-tex}}
 
 
 \end{thebibliography}
